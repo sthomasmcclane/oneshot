@@ -1,0 +1,14 @@
+services:
+  oneshot-tasks:
+    build: .
+    container_name: oneshot-tasks
+    volumes:
+      - /opt/docker/appdata/oneshot-tasks:/app/data
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DAILY_PUSH_CHAT_ID=${DAILY_PUSH_CHAT_ID}
+      - LOCATION=${LOCATION:-Brisbane}
+      - DB_PATH=data/tasks.db
+      - TZ=Australia/Brisbane
+    restart: unless-stopped
