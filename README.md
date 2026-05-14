@@ -28,10 +28,6 @@ Stop digging through lists. Get the right task for the right moment.
 - `/dash`: A unified dashboard for quick pulls by context, size, or tag.
 - `/tags`: Overview of all active project hashtags.
 - `/nudge`: Manually trigger a morning nudge (useful for testing or afternoon planning).
-- **Keyword Controls**:
-    - `done`: Mark step as complete and surface the next step.
-    - `skip` / `next`: Mark step as skipped and surface the next step (maintains momentum).
-    - `not now` / `later` / `back`: Return the step to the queue and defer the parent task.
 
 ---
 
@@ -74,9 +70,3 @@ Stop digging through lists. Get the right task for the right moment.
     ```
 
 ---
-
-## 🧪 Development Workflow
-This project follows a strict **Staging -> Production** workflow.
-- **Staging**: `Files/oneshot_stage/` (Path B testing)
-- **Production**: `Coding/oneshot_src/`
-- **Guidelines**: See `GEMINI.md` in the staging directory for specific refactoring and testing protocols.
