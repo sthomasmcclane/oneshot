@@ -9,6 +9,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - DAILY_PUSH_CHAT_ID=${DAILY_PUSH_CHAT_ID}
       - LOCATION=${LOCATION:-Brisbane}
+      - CALENDAR_IDS=s.thomasmcclane@gmail.com,af9bfcccacd56598d7210971da5045fb956198fc57af81fc31f2a92c17da1b88@group.calendar.google.com,family01115905817013068776@group.calendar.google.com,thethomasmcclanes@gmail.com
       - DB_PATH=data/tasks.db
       - TZ=Australia/Brisbane
     restart: unless-stopped

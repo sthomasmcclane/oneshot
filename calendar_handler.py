@@ -17,17 +17,29 @@ def get_today_events():
         creds = service_account.Credentials.from_service_account_file(KEY_FILE, scopes=SCOPES)
         service = build('calendar', 'v3', credentials=creds)
 
-        # Get the start and end of today
-        now = datetime.datetime.utcnow()
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + 'Z'
-        end = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat() + 'Z'
+        # Get the start and end of today in local time, then convert to UTC for API
+        from datetime import timezone
+        now = datetime.datetime.now().astimezone()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        end = now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
         # List all calendars
         calendar_list = service.calendarList().list().execute()
+        calendar_items = calendar_list.get('items', [])
+        
+        # Build list of IDs to check
+        ids_to_check = {item['id'] for item in calendar_items}
+        
+        # Add explicit IDs from environment variable
+        env_ids = os.getenv("CALENDAR_IDS", "s.thomasmcclane@gmail.com")
+        for eid in env_ids.split(','):
+            eid = eid.strip()
+            if eid:
+                ids_to_check.add(eid)
+
         all_events = []
 
-        for calendar_entry in calendar_list.get('items', []):
-            cal_id = calendar_entry['id']
+        for cal_id in ids_to_check:
             events_result = service.events().list(
                 calendarId=cal_id, timeMin=start, timeMax=end,
                 singleEvents=True, orderBy='startTime'
@@ -35,12 +47,16 @@ def get_today_events():
             events = events_result.get('items', [])
             
             for event in events:
-                start_time = event['start'].get('dateTime', event['start'].get('date'))
-                # Extract simple time if possible
-                if 'T' in start_time:
-                    time_part = start_time.split('T')[1][:5]
+                start_raw = event['start'].get('dateTime', event['start'].get('date'))
+                end_raw = event['end'].get('dateTime', event['end'].get('date'))
+                
+                if 'T' in start_raw and 'T' in end_raw:
+                    start_time = start_raw.split('T')[1][:5]
+                    end_time = end_raw.split('T')[1][:5]
+                    time_part = f"{start_time}-{end_time}"
                 else:
                     time_part = "All Day"
+                
                 all_events.append(f"{time_part}: {event['summary']}")
 
         if not all_events:
