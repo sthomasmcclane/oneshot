@@ -126,9 +126,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Remove markers from raw text for cleaner decomposition
     clean_text = markers_text if markers_text else text
     
-    # 3. AI Fallback for missing metadata
+    # 3. AI Metadata and Decomposition with fallback
+    use_fallback = False
     try:
         ai_meta = ai_handler.extract_metadata(clean_text)
+        steps = ai_handler.decompose_task(clean_text)
+    except Exception as e:
+        logging.error(f"Gemini API error during task processing: {e}")
+        use_fallback = True
+
+    if not use_fallback:
         task_title = ai_meta.get('title', clean_text[:30])
         task_ctx = task_ctx or ai_meta.get('context', 'general')
         task_dur = task_dur or ai_meta.get('duration', 'unknown')
@@ -139,23 +146,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ai_tags = ai_meta.get('tags', [])
         all_tags = list(set([f"#{t.lower().replace('#','')}" for t in tags_found + ai_tags]))
         task_tags_str = ",".join(all_tags) if all_tags else None
-            
-        # 3. AI Decomposition
-        steps = ai_handler.decompose_task(clean_text)
-        
-        # 4. Save to Database
-        task_id = database.add_task(clean_text, task_title, task_ctx, task_dur, task_mag, steps, tags=task_tags_str, scheduled_at=task_scheduled)
         
         confirmation = f"✅ *{task_title}*\n"
         confirmation += f"@{task_ctx} • {task_dur} • {task_mag} • {len(steps)} steps\n"
         if task_scheduled:
             confirmation += f"⏰ Scheduled: {task_scheduled}\n"
-        confirmation += f"{' • '.join(all_tags) if all_tags else ''}"
+        if all_tags:
+            confirmation += f"{' • '.join(all_tags)}"
+    else:
+        # Fallback logging requested by user
+        task_title = clean_text
+        task_ctx = "fallback"
+        task_dur = None
+        task_mag = None
+        task_scheduled = None
+        # Preserve manual tags if any were specified
+        task_tags_str = ",".join([f"#{t.lower()}" for t in tags_found]) if tags_found else None
+        steps = [clean_text]
+        
+        confirmation = f"✅ *{task_title}*\n"
+        confirmation += f"@{task_ctx}\n"
+        if tags_found:
+            confirmation += f"{' • '.join([f'#{t.lower()}' for t in tags_found])}"
 
+    # 4. Save to Database
+    try:
+        task_id = database.add_task(clean_text, task_title, task_ctx, task_dur, task_mag, steps, tags=task_tags_str, scheduled_at=task_scheduled)
         await status_msg.edit_text(confirmation, parse_mode="Markdown")
     except Exception as e:
-        logging.error(f"Error processing task: {e}")
-        await status_msg.edit_text(f"❌ Error: {str(e)}")
+        logging.error(f"Error saving task: {e}")
+        await status_msg.edit_text(f"❌ Database Error: {str(e)}")
 
 async def list_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tags = database.get_all_tags()

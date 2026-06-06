@@ -24,27 +24,20 @@ def decompose_task(task_text):
     Example format: ["Step 1 description", "Step 2 description"]
     """
     
-    try:
-        response = client.models.generate_content(
-            model=MODEL_ID,
-            contents=prompt
-        )
-        # Attempt to parse JSON from the response
-        content = response.text.strip()
-        # Handle cases where Gemini wraps JSON in markdown blocks
-        if content.startswith("```json"):
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif content.startswith("```"):
-            content = content.split("```")[1].split("```")[0].strip()
-            
-        steps = json.loads(content)
-        return steps
-    except Exception as e:
-        print(f"Error parsing Gemini response: {e}")
-        # Fallback: simple split if JSON fails
-        # Try to clean response if it wasn't valid JSON
-        lines = [line.strip() for line in response.text.split('\n') if line.strip()]
-        return lines
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt
+    )
+    # Attempt to parse JSON from the response
+    content = response.text.strip()
+    # Handle cases where Gemini wraps JSON in markdown blocks
+    if content.startswith("```json"):
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif content.startswith("```"):
+        content = content.split("```")[1].split("```")[0].strip()
+        
+    steps = json.loads(content)
+    return steps
 
 def extract_metadata(task_text):
     """
@@ -65,22 +58,18 @@ def extract_metadata(task_text):
     Example: {{"title": "Order batteries", "context": "office", "duration": "30m", "magnitude": "small", "tags": ["#electronics", "#shopping"], "scheduled_at": "2026-05-11T15:30:00"}}
     """
     
-    try:
-        response = client.models.generate_content(
-            model=MODEL_ID,
-            contents=prompt
-        )
-        content = response.text.strip()
-        if content.startswith("```json"):
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif content.startswith("```"):
-            content = content.split("```")[1].split("```")[0].strip()
-            
-        metadata = json.loads(content)
-        return metadata
-    except Exception as e:
-        print(f"Error extracting metadata: {e}")
-        return {"title": task_text[:30], "context": "general", "duration": "unknown", "magnitude": "medium", "tags": []}
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt
+    )
+    content = response.text.strip()
+    if content.startswith("```json"):
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif content.startswith("```"):
+        content = content.split("```")[1].split("```")[0].strip()
+        
+    metadata = json.loads(content)
+    return metadata
 
 def generate_morning_nudge(weather_data, calendar_data, task_summary):
     """
