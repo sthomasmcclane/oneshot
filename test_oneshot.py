@@ -32,13 +32,13 @@ def test_pull(query_text):
     text = query_text.lower().strip()
     
     # regex from bot.py
-    ctx_match = re.search(r'@(\w+)', text)
+    ctx_match = re.search(r'\+(\w+)', text)
     dur_match = re.search(r'(\d+[mh])', text)
     mag_match = re.search(r'\b(small|medium|large)\b', text, re.IGNORECASE)
     tags_found = re.findall(r'#(\w+)', text)
     
     # Marker-only check: strip markers and see if anything is left
-    markers_text = re.sub(r'(@\w+|#\w+|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
+    markers_text = re.sub(r'(\+\w+|#\w+|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
     
     if not markers_text and (ctx_match or dur_match or mag_match or tags_found):
         print("RESULT: Detected as 'Marker-only Pull'")
@@ -52,7 +52,7 @@ def test_pull(query_text):
         if tasks:
             print(f"MATCHED: {len(tasks)} tasks")
             for t in tasks:
-                print(f"  - [{t[1]}] @{t[2]} | {t[3]} | {t[4]} | Tags: {t[5]}")
+                print(f"  - [{t[1]}] +{t[2]} | {t[3]} | {t[4]} | Tags: {t[5]}")
         else:
             print("MATCHED: None")
     else:
@@ -62,10 +62,10 @@ if __name__ == "__main__":
     setup_test_data()
     
     # 1. Single Context Pull
-    test_pull("@office")
+    test_pull("+office")
     
     # 2. Context + Duration
-    test_pull("@home 15m")
+    test_pull("+home 15m")
     
     # 3. Size Pull
     test_pull("large")
@@ -77,13 +77,13 @@ if __name__ == "__main__":
     test_pull("#ai #coding")
     
     # 6. Complex Triple Filter
-    test_pull("@office 1h #ai")
+    test_pull("+office 1h #ai")
     
     # 7. Capture (Not a Pull)
-    test_pull("Buy milk @home")
+    test_pull("Buy milk +home")
     
     # 8. No Match Case
-    test_pull("@office 10m") 
+    test_pull("+office 10m") 
     
     # Clean up test DB
     if os.path.exists(TEST_DB):

@@ -48,7 +48,9 @@ def init_db():
                 status TEXT DEFAULT 'active',
                 last_deferred TIMESTAMP,
                 last_active TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_urgent INTEGER DEFAULT 0,
+                is_important INTEGER DEFAULT 0
             )
         ''')
 
@@ -61,7 +63,9 @@ def init_db():
             ('tags', "ALTER TABLE tasks ADD COLUMN tags TEXT"),
             ('status', "ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'active'"),
             ('last_deferred', "ALTER TABLE tasks ADD COLUMN last_deferred TIMESTAMP"),
-            ('scheduled_at', "ALTER TABLE tasks ADD COLUMN scheduled_at TIMESTAMP")
+            ('scheduled_at', "ALTER TABLE tasks ADD COLUMN scheduled_at TIMESTAMP"),
+            ('is_urgent', "ALTER TABLE tasks ADD COLUMN is_urgent INTEGER DEFAULT 0"),
+            ('is_important', "ALTER TABLE tasks ADD COLUMN is_important INTEGER DEFAULT 0")
         ]
         for col, sql in migrations:
             if col not in columns:
@@ -100,14 +104,14 @@ def init_db():
         
         conn.commit()
 
-def add_task(raw_text, title, context, duration, magnitude, steps_list, tags=None, scheduled_at=None):
+def add_task(raw_text, title, context, duration, magnitude, steps_list, tags=None, scheduled_at=None, is_urgent=0, is_important=0):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
             cursor.execute('''
-                INSERT INTO tasks (raw_text, title, context, duration, magnitude, tags, scheduled_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (raw_text, title, context, duration, magnitude, tags, scheduled_at))
+                INSERT INTO tasks (raw_text, title, context, duration, magnitude, tags, scheduled_at, is_urgent, is_important)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (raw_text, title, context, duration, magnitude, tags, scheduled_at, is_urgent, is_important))
             
             task_id = cursor.lastrowid
             
@@ -152,8 +156,8 @@ def get_tasks(context=None, duration=None, magnitude=None, tags=None, limit=1):
                 query += " AND t.tags LIKE ?"
                 params.append(f"%#{tag.lower()}%")
                 
-        # Ordering logic: Deferred tasks go to the back, active ones to the front
-        query += " ORDER BY (t.last_deferred IS NOT NULL) ASC, t.last_active DESC, t.last_deferred ASC, t.created_at ASC"
+        # Ordering logic: Deferred tasks go to the back, sorted by priority (Important first, then Urgent)
+        query += " ORDER BY (t.last_deferred IS NOT NULL) ASC, t.is_important DESC, t.is_urgent DESC, t.last_active DESC, t.last_deferred ASC, t.created_at ASC"
         
         cursor.execute(query, params)
         all_tasks = cursor.fetchall()
@@ -175,6 +179,17 @@ def get_tasks(context=None, duration=None, magnitude=None, tags=None, limit=1):
 def get_next_tasks(limit=1):
     """Wrapper for get_tasks without filters."""
     return get_tasks(limit=limit)
+
+def get_task_by_id(task_id):
+    """Gets a specific task by its ID."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, title, context, duration, magnitude, tags
+            FROM tasks
+            WHERE id = ?
+        ''', (task_id,))
+        return cursor.fetchone()
 
 def get_tasks_by_context(context, limit=1):
     return get_tasks(context=context, limit=limit)
@@ -264,7 +279,7 @@ def _get_counts(field):
             SELECT t.{field}, COUNT(s.id) 
             FROM tasks t
             JOIN steps s ON t.id = s.task_id
-            WHERE s.is_completed = 0
+            WHERE s.is_completed = 0 AND s.is_skipped = 0 AND t.status = 'active'
             GROUP BY t.{field}
             ORDER BY t.{field} ASC
         ''')
@@ -307,7 +322,7 @@ def get_all_tags():
             SELECT t.tags 
             FROM tasks t
             JOIN steps s ON t.id = s.task_id
-            WHERE s.is_completed = 0 AND t.tags IS NOT NULL
+            WHERE s.is_completed = 0 AND s.is_skipped = 0 AND t.status = 'active' AND t.tags IS NOT NULL
         ''')
         rows = cursor.fetchall()
     
@@ -351,6 +366,48 @@ def mark_task_scheduled_done(task_id):
         cursor = conn.cursor()
         cursor.execute('UPDATE tasks SET scheduled_at = NULL WHERE id = ?', (task_id,))
         conn.commit()
+
+def complete_task(task_id):
+    """Mark all steps of a task and the task itself as completed."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        try:
+            cursor.execute('''
+                UPDATE steps
+                SET is_completed = 1, completed_at = ?, is_surfaced = 0
+                WHERE task_id = ? AND is_completed = 0 AND is_skipped = 0
+            ''', (now, task_id))
+            cursor.execute('''
+                UPDATE tasks
+                SET status = 'completed', last_active = ?
+                WHERE id = ?
+            ''', (now, task_id))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
+
+def delete_task(task_id):
+    """Mark a task status as deleted and reset any surfaced steps."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        try:
+            cursor.execute('''
+                UPDATE tasks
+                SET status = 'deleted', last_active = ?
+                WHERE id = ?
+            ''', (now, task_id))
+            cursor.execute('''
+                UPDATE steps
+                SET is_surfaced = 0
+                WHERE task_id = ?
+            ''', (task_id,))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
 
 def clear_all_data():
     """Wipes all tasks and steps. Dangerous!"""

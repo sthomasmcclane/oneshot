@@ -1,6 +1,7 @@
 import os
 import logging
 import re
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
@@ -29,8 +30,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🚀 *OneShot Tasks*\n\n"
-        "*Capture:* Just send the task. Add markers like `@office`, `30m`, `large`, or `#tag`.\n\n"
-        "*Pull:* Send any combination of markers (e.g., `@laptop 15m #git`) to get a matching task.\n\n"
+        "*Capture:* Just send the task. Add markers like `+office`, `30m`, `large`, `#tag`, `!ui` (urgent/important), or `!i` (important).\n\n"
+        "*Pull:* Send any combination of markers (e.g., `+laptop 15m #git`) to get a matching task.\n\n"
         "*Commands:*\n"
         "• /dash: Your unified task dashboard.\n"
         "• /tags: List all active hashtags.\n"
@@ -52,7 +53,7 @@ async def list_contexts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     msg = "📂 Active Contexts:\n\n"
     for ctx, count in contexts:
-        msg += f"• @{ctx} ({count} steps)\n"
+        msg += f"• +{ctx} ({count} steps)\n"
     
     await update.message.reply_text(msg)
 
@@ -89,13 +90,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 1. Universal Pull / Marker-Only Logic
     # Identify markers in the text
-    ctx_match = re.search(r'@(\w+)', text)
+    ctx_match = re.search(r'\+(\w+)', text)
     dur_match = re.search(r'(\d+[mh])', text)
     mag_match = re.search(r'\b(small|medium|large)\b', text, re.IGNORECASE)
     tags_found = re.findall(r'#(\w+)', text)
     
+    # Parse manual priority markers starting with !
+    priority_matches = re.findall(r'!(\w+)', text)
+    manual_urgent = None
+    manual_important = None
+    if priority_matches:
+        manual_urgent = 0
+        manual_important = 0
+        for p in priority_matches:
+            if 'u' in p.lower():
+                manual_urgent = 1
+            if 'i' in p.lower():
+                manual_important = 1
+
     # Check if the text consists ONLY of markers
-    markers_text = re.sub(r'(@\w+|#\w+|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
+    markers_text = re.sub(r'(\+\w+|#\w+|!\w+|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
     
     if not markers_text and (ctx_match or dur_match or mag_match or tags_found):
         # This is a direct pull request
@@ -103,13 +117,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pull_dur = dur_match.group(1) if dur_match else None
         pull_mag = mag_match.group(1).lower() if mag_match else None
         
-        tasks = database.get_tasks(context=pull_ctx, duration=pull_dur, magnitude=pull_mag, tags=tags_found, limit=1)
+        tasks = database.get_tasks(context=pull_ctx, duration=pull_dur, magnitude=pull_mag, tags=tags_found, limit=5)
         
         if tasks:
-            await surface_task(context.bot, chat_id, tasks[0], context)
+            await present_task_results(context.bot, chat_id, tasks, update, context)
         else:
             filters_desc = []
-            if pull_ctx: filters_desc.append(f"@{pull_ctx}")
+            if pull_ctx: filters_desc.append(f"+{pull_ctx}")
             if pull_dur: filters_desc.append(pull_dur)
             if pull_mag: filters_desc.append(pull_mag)
             for t in tags_found: filters_desc.append(f"#{t}")
@@ -147,8 +161,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         all_tags = list(set([f"#{t.lower().replace('#','')}" for t in tags_found + ai_tags]))
         task_tags_str = ",".join(all_tags) if all_tags else None
         
+        # Priority logic: manual override first, then AI inference
+        if manual_urgent is not None:
+            task_urgent = manual_urgent
+        else:
+            task_urgent = 1 if ai_meta.get('urgent') else 0
+            
+        if manual_important is not None:
+            task_important = manual_important
+        else:
+            task_important = 1 if ai_meta.get('important') else 0
+
+        # priority text formatting
+        p_text = ""
+        if task_urgent and task_important:
+            p_text = "🔥 *Urgent & Important (Q1)*"
+        elif task_important:
+            p_text = "⭐ *Important (Q2)*"
+        elif task_urgent:
+            p_text = "⚡ *Urgent (Q3)*"
+        else:
+            p_text = "📥 *Backlog (Q4)*"
+
         confirmation = f"✅ *{task_title}*\n"
-        confirmation += f"@{task_ctx} • {task_dur} • {task_mag} • {len(steps)} steps\n"
+        confirmation += f"+{task_ctx} • {task_dur} • {task_mag} • {len(steps)} steps\n"
+        confirmation += f"Priority: {p_text}\n"
         if task_scheduled:
             confirmation += f"⏰ Scheduled: {task_scheduled}\n"
         if all_tags:
@@ -164,18 +201,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         task_tags_str = ",".join([f"#{t.lower()}" for t in tags_found]) if tags_found else None
         steps = [clean_text]
         
+        task_urgent = manual_urgent if manual_urgent is not None else 0
+        task_important = manual_important if manual_important is not None else 0
+
+        # priority text formatting
+        p_text = ""
+        if task_urgent and task_important:
+            p_text = "🔥 *Urgent & Important (Q1)*"
+        elif task_important:
+            p_text = "⭐ *Important (Q2)*"
+        elif task_urgent:
+            p_text = "⚡ *Urgent (Q3)*"
+        else:
+            p_text = "📥 *Backlog (Q4)*"
+        
         confirmation = f"✅ *{task_title}*\n"
-        confirmation += f"@{task_ctx}\n"
+        confirmation += f"+{task_ctx}\n"
+        confirmation += f"Priority: {p_text}\n"
         if tags_found:
             confirmation += f"{' • '.join([f'#{t.lower()}' for t in tags_found])}"
 
-    # 4. Save to Database
+    # 4. Save to Database (Local & fast, minimal timeout risk)
     try:
-        task_id = database.add_task(clean_text, task_title, task_ctx, task_dur, task_mag, steps, tags=task_tags_str, scheduled_at=task_scheduled)
-        await status_msg.edit_text(confirmation, parse_mode="Markdown")
+        task_id = database.add_task(clean_text, task_title, task_ctx, task_dur, task_mag, steps, tags=task_tags_str, scheduled_at=task_scheduled, is_urgent=task_urgent, is_important=task_important)
     except Exception as e:
-        logging.error(f"Error saving task: {e}")
-        await status_msg.edit_text(f"❌ Database Error: {str(e)}")
+        logging.error(f"Error saving task to DB: {e}")
+        try:
+            await status_msg.edit_text(f"❌ Database Error: {str(e)}", connect_timeout=5, write_timeout=5)
+        except Exception as te:
+            logging.error(f"Failed to send database error message: {te}")
+        return
+
+    # 5. Update UI (Network-dependent, wraps failures safely)
+    try:
+        await status_msg.edit_text(confirmation, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
+    except Exception as e:
+        logging.warning(f"Failed to edit status message: {e}. Trying backup reply.")
+        try:
+            # Fallback to sending a new message if editing the existing one failed
+            await update.message.reply_text(
+                f"Saved: *{task_title}*\n+{task_ctx} (status message update failed)",
+                parse_mode="Markdown",
+                connect_timeout=5,
+                write_timeout=5
+            )
+        except Exception as fallback_err:
+            logging.error(f"Backup reply failed: {fallback_err}")
 
 async def list_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tags = database.get_all_tags()
@@ -189,26 +260,79 @@ async def list_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg)
 
+async def present_task_results(bot, chat_id, tasks, update, context_obj=None, prefix="🎯 Next Project:"):
+    if not tasks:
+        return
+        
+    if len(tasks) == 1:
+        await surface_task(bot, chat_id, tasks[0], context_obj, prefix=prefix)
+    else:
+        text = "🔍 *Multiple matching tasks found:*\n\n"
+        keyboard = []
+        row = []
+        for idx, task in enumerate(tasks, 1):
+            task_id, title, ctx, dur, mag, tags_str = task
+            meta = f"+{ctx}"
+            if dur and dur != 'unknown':
+                meta += f" • {dur}"
+            if mag and mag != 'medium':
+                meta += f" • {mag}"
+            
+            text += f"{idx}. *{title}* ({meta})\n"
+            
+            row.append(InlineKeyboardButton(f"Task {idx}", callback_data=f"selecttask_{task_id}"))
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+            
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
+            else:
+                await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
+        except Exception as e:
+            logging.error(f"Error displaying task selection menu: {e}")
+
 async def surface_task(bot, chat_id, task_tuple, context_obj=None, prefix="🎯 Next Project:"):
     task_id, title, ctx, dur, mag, tags_str = task_tuple
     
     keyboard = [
         [
             InlineKeyboardButton("✅ Accept", callback_data=f"taskaccept_{task_id}"),
-            InlineKeyboardButton("❌ Not Now", callback_data=f"taskskip_{task_id}"),
+            InlineKeyboardButton("⏭️ Not Now", callback_data=f"taskskip_{task_id}"),
+        ],
+        [
+            InlineKeyboardButton("🏁 Complete All", callback_data=f"taskcomplete_{task_id}"),
+            InlineKeyboardButton("🗑️ Delete", callback_data=f"taskdelete_{task_id}"),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     tags_text = f"\n\n{' • '.join(tags_str.split(','))}" if tags_str else ""
-    meta_text = f"@{ctx} • {dur} • {mag}"
+    meta_text = f"+{ctx} • {dur} • {mag}"
     
-    await bot.send_message(
-        chat_id=chat_id,
-        text=f"{prefix}\n*{title}*\n_{meta_text}_{tags_text}",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
-    )
+    for attempt in range(3):
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"{prefix}\n*{title}*\n_{meta_text}_{tags_text}",
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
+                connect_timeout=5,
+                write_timeout=5,
+                read_timeout=5
+            )
+            return True
+        except Exception as e:
+            logging.warning(f"Error surfacing task (attempt {attempt+1}/3): {e}")
+            if attempt == 2:
+                logging.error(f"Failed to surface task after 3 attempts: {e}")
+                raise e
+            await asyncio.sleep(1)
 
 async def surface_step(bot, chat_id, step_tuple, prefix="🛠️ Step:"):
     step_id, description, task_id = step_tuple
@@ -222,12 +346,24 @@ async def surface_step(bot, chat_id, step_tuple, prefix="🛠️ Step:"):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await bot.send_message(
-        chat_id=chat_id,
-        text=f"{prefix} {description}",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
-    )
+    for attempt in range(3):
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"{prefix} {description}",
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
+                connect_timeout=5,
+                write_timeout=5,
+                read_timeout=5
+            )
+            return True
+        except Exception as e:
+            logging.warning(f"Error surfacing step (attempt {attempt+1}/3): {e}")
+            if attempt == 2:
+                logging.error(f"Failed to surface step after 3 attempts: {e}")
+                raise e
+            await asyncio.sleep(1)
 
 async def list_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contexts = database.get_all_contexts()
@@ -246,8 +382,8 @@ async def list_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "*By Context:*\n"
         row = []
         for ctx, count in contexts:
-            msg += f"• @{ctx} ({count})\n"
-            row.append(InlineKeyboardButton(f"@{ctx}", callback_data=f"pullctx_{ctx}"))
+            msg += f"• +{ctx} ({count})\n"
+            row.append(InlineKeyboardButton(f"+{ctx}", callback_data=f"pullctx_{ctx}"))
             if len(row) == 2:
                 keyboard.append(row)
                 row = []
@@ -284,33 +420,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
+    # Handle Dashboard/Message Pulls Selectors
+    if data.startswith("selecttask_"):
+        task_id = int(data.split("_")[1])
+        task = database.get_task_by_id(task_id)
+        if task:
+            await query.edit_message_text(text="🎯 Pulling task...")
+            await surface_task(context.bot, update.effective_chat.id, task, context)
+        else:
+            await query.edit_message_text(text="Error: Task not found.")
+        return
+
     # Handle Dashboard Pulls
     if data.startswith("pullctx_"):
         ctx_name = data.split("_")[1]
-        tasks = database.get_tasks_by_context(ctx_name, limit=1)
+        tasks = database.get_tasks_by_context(ctx_name, limit=5)
         if tasks:
-            await query.edit_message_text(text=f"Selected Context: @{ctx_name}")
-            await surface_task(context.bot, update.effective_chat.id, tasks[0], context)
+            await present_task_results(context.bot, update.effective_chat.id, tasks, update, context)
         else:
-            await query.edit_message_text(text=f"No tasks for @{ctx_name}")
+            await query.edit_message_text(text=f"No tasks for +{ctx_name}")
         return
 
     if data.startswith("pulltag_"):
         tag_name = data.split("_")[1]
-        tasks = database.get_tasks_by_tag(tag_name, limit=1)
+        tasks = database.get_tasks_by_tag(tag_name, limit=5)
         if tasks:
-            await query.edit_message_text(text=f"Selected Tag: #{tag_name}")
-            await surface_task(context.bot, update.effective_chat.id, tasks[0], context)
+            await present_task_results(context.bot, update.effective_chat.id, tasks, update, context)
         else:
             await query.edit_message_text(text=f"No tasks for #{tag_name}")
         return
         
     if data.startswith("pullmag_"):
         mag_name = data.split("_")[1]
-        tasks = database.get_tasks_by_magnitude(mag_name, limit=1)
+        tasks = database.get_tasks_by_magnitude(mag_name, limit=5)
         if tasks:
-            await query.edit_message_text(text=f"Selected Size: {mag_name.capitalize()}")
-            await surface_task(context.bot, update.effective_chat.id, tasks[0], context)
+            await present_task_results(context.bot, update.effective_chat.id, tasks, update, context)
         else:
             await query.edit_message_text(text=f"No tasks for size {mag_name}")
         return
@@ -340,6 +484,20 @@ async def process_action(action, id_val, update, context, is_query=False):
     if action == "taskskip":
         database.defer_task(id_val)
         msg = "⏭️ Task deferred."
+        if is_query: await update.callback_query.edit_message_text(text=msg)
+        else: await update.message.reply_text(msg)
+        return
+
+    if action == "taskcomplete":
+        database.complete_task(id_val)
+        msg = "🏁 Task and all steps completed."
+        if is_query: await update.callback_query.edit_message_text(text=msg)
+        else: await update.message.reply_text(msg)
+        return
+
+    if action == "taskdelete":
+        database.delete_task(id_val)
+        msg = "🗑️ Task deleted."
         if is_query: await update.callback_query.edit_message_text(text=msg)
         else: await update.message.reply_text(msg)
         return
@@ -427,7 +585,7 @@ async def daily_push(application, manual_chat_id=None):
         
         # 2. Gather Task Summary
         contexts = database.get_all_contexts()
-        summary_parts = [f"@{ctx} ({count})" for ctx, count in contexts]
+        summary_parts = [f"+{ctx} ({count})" for ctx, count in contexts]
         task_summary = ", ".join(summary_parts) if summary_parts else "No pending tasks."
         
         # 3. Generate Nudge via AI

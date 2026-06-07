@@ -51,11 +51,13 @@ def extract_metadata(task_text):
     4. Magnitude: (small, medium, large).
     5. Tags: Extract any hashtags from the text (e.g., #git, #shopping).
     6. Schedule: Extract any time-based scheduling information (e.g., "#schedule 15:30", "tomorrow 9am", "9am", "at 4pm", "tonight"). Convert this to an ISO 8601 timestamp string (e.g., "2026-05-11T15:30:00"). Use the current date and time as a reference: {datetime.now().isoformat()}. If the user provides a time without a date, assume today. If the time has already passed today, assume tomorrow. If no schedule is found, return null.
+    7. Urgent: Infer if the task is urgent (time-sensitive, needs immediate attention). Return true or false.
+    8. Important: Infer if the task is important (high value, aligns with key goals or projects). Return true or false.
     
     Task: {task_text}
     
     Return the result ONLY as a JSON object.
-    Example: {{"title": "Order batteries", "context": "office", "duration": "30m", "magnitude": "small", "tags": ["#electronics", "#shopping"], "scheduled_at": "2026-05-11T15:30:00"}}
+    Example: {{"title": "Order batteries", "context": "office", "duration": "30m", "magnitude": "small", "tags": ["#electronics", "#shopping"], "scheduled_at": "2026-05-11T15:30:00", "urgent": false, "important": true}}
     """
     
     response = client.models.generate_content(

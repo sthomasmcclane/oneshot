@@ -11,18 +11,18 @@ OneShot Tasks is a minimalist, Telegram-based task manager designed for the "Get
 ### 1. High-Speed Capture
 Just send a message to the bot. 
 - **AI Decomposition**: Every task is automatically broken down into discrete, sequential steps using Gemini.
-- **Auto-Metadata**: The AI infers context, duration, magnitude, and tags even if you don't explicitly provide them.
-- **Inline Markers**: Use `@context`, `{N}m`, `small|medium|large`, or `#tag` directly in your capture message to override AI inference.
+- **Auto-Metadata**: The AI infers context, duration, magnitude, tags, and priority even if you don't explicitly provide them.
+- **Inline Markers**: Use `+context`, `{N}m`, `small|medium|large`, `#tag`, or `!u`/`!i`/`!ui` (priority) directly in your capture message to override AI inference.
 - **Intelligent Scheduling**: Add a schedule marker (e.g., `#schedule 15:30`, `tomorrow 9am`, or just `9am`) to have the bot automatically surface the task at that time.
 
 ### 2. The "Marker Pull" System
 Stop digging through lists. Get the right task for the right moment.
-- Send just the markers (e.g., `@laptop 15m #coding`) to instantly retrieve the highest-priority task matching those criteria.
+- Send just the markers (e.g., `+laptop 15m #coding`) to instantly retrieve the highest-priority task matching those criteria.
 - **Combined Filters**: Supports intersection filtering across Context, Duration, Magnitude, and Hashtags.
 
 ### 3. Reality Integration
 - **Morning Nudges**: Every morning at 06:00, the bot synthesizes your weather, calendar, and pending tasks into a conversational nudge.
-- **Context Awareness**: Suggestions are tailored to your actual schedule and environmental conditions (e.g., "It's sunny and your morning is clear, tackle those @yard tasks").
+- **Context Awareness**: Suggestions are tailored to your actual schedule and environmental conditions (e.g., "It's sunny and your morning is clear, tackle those +yard tasks").
 
 ### 4. Minimalist Interface
 - `/dash`: A unified dashboard for quick pulls by context, size, or tag.
