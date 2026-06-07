@@ -409,6 +409,61 @@ def delete_task(task_id):
             conn.rollback()
             raise e
 
+def prune_old_tasks(days=90):
+    """Permanently deletes tasks and steps that were completed or deleted more than X days ago."""
+    from datetime import timedelta
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        try:
+            # First, find task IDs that match the criteria
+            cursor.execute('''
+                SELECT id FROM tasks
+                WHERE status IN ('completed', 'deleted') AND last_active <= ?
+            ''', (cutoff,))
+            task_ids = [row[0] for row in cursor.fetchall()]
+            
+            if task_ids:
+                # Placeholders for IN query
+                placeholders = ','.join('?' for _ in task_ids)
+                # Delete steps
+                cursor.execute(f'DELETE FROM steps WHERE task_id IN ({placeholders})', task_ids)
+                # Delete tasks
+                cursor.execute(f'DELETE FROM tasks WHERE id IN ({placeholders})', task_ids)
+                conn.commit()
+                return len(task_ids)
+            return 0
+        except Exception as e:
+            conn.rollback()
+            raise e
+
+def get_stale_tasks(days=30):
+    """Gets active tasks that have been inactive/un-updated for more than X days."""
+    from datetime import timedelta
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        cursor.execute('''
+            SELECT DISTINCT t.id, t.title, t.context, t.duration, t.magnitude, t.tags
+            FROM tasks t
+            JOIN steps s ON t.id = s.task_id
+            WHERE t.status = 'active'
+              AND s.is_completed = 0
+              AND s.is_skipped = 0
+              AND t.created_at <= ?
+              AND (t.last_active IS NULL OR t.last_active <= ?)
+            ORDER BY t.created_at ASC
+        ''', (cutoff, cutoff))
+        return cursor.fetchall()
+
+def touch_task(task_id):
+    """Updates a task's last_active timestamp to today to show it was reviewed."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now().isoformat()
+        cursor.execute('UPDATE tasks SET last_active = ? WHERE id = ?', (now, task_id))
+        conn.commit()
+
 def clear_all_data():
     """Wipes all tasks and steps. Dangerous!"""
     with get_db_connection() as conn:

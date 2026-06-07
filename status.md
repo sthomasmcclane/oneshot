@@ -24,6 +24,9 @@
   * Direct pulls and dashboard selections now query up to 5 matching tasks. If multiple tasks match, the bot presents a numbered selection menu with inline buttons instead of randomly picking a task.
 * **Top-Level Task Controls**:
   * Added `Complete All` and `Delete` buttons next to `Accept`/`Not Now` on surfaced task cards, instantly database-marking them and updating dashboard counts.
+* **Database Pruning & Stale Task Auditing**:
+  * Added `/audit` command to manually triage active tasks that have been inactive for over 30 days, using a session-isolated skipped task list.
+  * Implemented a daily database pruning task (running at 03:00 AM and once on startup) that permanently deletes tasks marked `'completed'` or `'deleted'` older than 90 days.
 * **Documentation & Staging Cleanup**:
   * Updated `README.md` and `/help` command text.
   * Edited `GEMINI.md` to remove all references to the obsolete `oneshot_stage` staging area.

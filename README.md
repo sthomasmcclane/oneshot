@@ -28,6 +28,7 @@ Stop digging through lists. Get the right task for the right moment.
 - `/dash`: A unified dashboard for quick pulls by context, size, or tag.
 - `/tags`: Overview of all active project hashtags.
 - `/nudge`: Manually trigger a morning nudge (useful for testing or afternoon planning).
+- `/audit`: Trigger an interactive cleanup of tasks that have been inactive for over 30 days.
 
 ---
 

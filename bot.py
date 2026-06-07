@@ -2,7 +2,7 @@ import os
 import logging
 import re
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -36,6 +36,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /dash: Your unified task dashboard.\n"
         "• /tags: List all active hashtags.\n"
         "• /nudge: Trigger a morning nudge manually.\n"
+        "• /audit: Triage tasks older than 30 days.\n"
         "• /clear: Wipe everything.\n"
         "• /help: This guide."
     )
@@ -420,6 +421,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
+    # Handle Audit Actions
+    if data.startswith("auditdelete_"):
+        task_id = int(data.split("_")[1])
+        database.delete_task(task_id)
+        await present_audit_step(update, context)
+        return
+        
+    if data.startswith("auditcomplete_"):
+        task_id = int(data.split("_")[1])
+        database.complete_task(task_id)
+        await present_audit_step(update, context)
+        return
+        
+    if data.startswith("auditkeep_"):
+        task_id = int(data.split("_")[1])
+        database.touch_task(task_id)
+        await present_audit_step(update, context)
+        return
+        
+    if data.startswith("auditnext_"):
+        task_id = int(data.split("_")[1])
+        if 'audit_skipped' not in context.user_data:
+            context.user_data['audit_skipped'] = []
+        context.user_data['audit_skipped'].append(task_id)
+        await present_audit_step(update, context)
+        return
+
     # Handle Dashboard/Message Pulls Selectors
     if data.startswith("selecttask_"):
         task_id = int(data.split("_")[1])
@@ -571,6 +599,65 @@ async def nude_easter_egg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Easter egg error: {e}")
         await update.message.reply_text("Meow! (I tried to find a kitten for your typo, but it ran away.) 🐈")
 
+async def audit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manually trigger task database cleanup/triage."""
+    context.user_data['audit_skipped'] = []
+    await present_audit_step(update, context)
+
+async def present_audit_step(update, context):
+    skipped_ids = context.user_data.get('audit_skipped', [])
+    
+    # Get active tasks older than 30 days
+    stale_tasks = database.get_stale_tasks(days=30)
+    
+    # Filter out skipped ones
+    remaining_tasks = [t for t in stale_tasks if t[0] not in skipped_ids]
+    
+    if not remaining_tasks:
+        msg = "✨ *Audit complete!* No more stale tasks older than 30 days to review."
+        if update.callback_query:
+            try:
+                await update.callback_query.edit_message_text(msg, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
+            except Exception:
+                pass
+        else:
+            await update.message.reply_text(msg, parse_mode="Markdown")
+        return
+        
+    task = remaining_tasks[0]
+    task_id, title, ctx, dur, mag, tags_str = task
+    total_stale = len(stale_tasks)
+    reviewed_count = total_stale - len(remaining_tasks)
+    
+    text = (
+        f"📋 *Task Audit ({reviewed_count + 1}/{total_stale})*\n"
+        f"This task has been inactive for over 30 days. What should we do?\n\n"
+        f"*{title}*\n"
+        f"+{ctx} • {dur} • {mag}\n"
+    )
+    if tags_str:
+        text += f"{' • '.join(tags_str.split(','))}\n"
+        
+    keyboard = [
+        [
+            InlineKeyboardButton("🗑️ Delete", callback_data=f"auditdelete_{task_id}"),
+            InlineKeyboardButton("🏁 Complete", callback_data=f"auditcomplete_{task_id}"),
+        ],
+        [
+            InlineKeyboardButton("⭐ Keep (Touch)", callback_data=f"auditkeep_{task_id}"),
+            InlineKeyboardButton("⏭️ Next", callback_data=f"auditnext_{task_id}"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    try:
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
+        else:
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
+    except Exception as e:
+        logging.error(f"Error presenting audit step: {e}")
+
 async def daily_push(application, manual_chat_id=None):
     target_chat_id = manual_chat_id or os.getenv("DAILY_PUSH_CHAT_ID")
     if not target_chat_id:
@@ -616,6 +703,14 @@ async def check_schedules(application):
         database.mark_task_scheduled_done(task[0])
     logging.info(f"Pushed {len(due_tasks)} scheduled tasks.")
 
+async def run_pruning(application):
+    try:
+        count = database.prune_old_tasks(days=90)
+        if count > 0:
+            logging.info(f"Database pruned: permanently removed {count} tasks older than 90 days.")
+    except Exception as e:
+        logging.error(f"Error running database pruning: {e}")
+
 async def post_init(application):
     # Scheduler
     scheduler = AsyncIOScheduler()
@@ -623,8 +718,12 @@ async def post_init(application):
     scheduler.add_job(daily_push, CronTrigger(hour=6, minute=0), args=[application])
     # Runs every minute to check schedules
     scheduler.add_job(check_schedules, 'interval', minutes=1, args=[application])
+    # Runs pruning daily at 03:00 AM
+    scheduler.add_job(run_pruning, CronTrigger(hour=3, minute=0), args=[application])
+    # Also run once immediately on startup to clean up right away!
+    scheduler.add_job(run_pruning, 'date', run_date=datetime.now() + timedelta(seconds=10), args=[application])
     scheduler.start()
-    logging.info("Scheduler started (06:00 daily + interval 1m).")
+    logging.info("Scheduler started (06:00 daily + interval 1m + pruning daily 03:00).")
 
 if __name__ == '__main__':
     database.init_db()
@@ -641,6 +740,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("sizes", list_magnitudes))
     app.add_handler(CommandHandler("durations", list_durations))
     app.add_handler(CommandHandler("nudge", nudge_command))
+    app.add_handler(CommandHandler("audit", audit_command))
     app.add_handler(CommandHandler("nude", nude_easter_egg))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     app.add_handler(CallbackQueryHandler(button_handler))
