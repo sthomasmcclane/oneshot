@@ -332,6 +332,8 @@ async def surface_task(bot, chat_id, task_tuple, context_obj=None, prefix="🎯 
     
     has_ai = database.task_has_ai_offloadable_steps(task_id)
     title_prefix = "🤖 " if has_ai else ""
+    tags_text = f"\n\n{' • '.join(tags_str.split(','))}" if tags_str else ""
+    meta_text = f"+{ctx} • {dur} • {mag}"
     
     for attempt in range(3):
         try:
