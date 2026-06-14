@@ -30,8 +30,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🚀 *OneShot Tasks*\n\n"
-        "*Capture:* Just send the task. Add markers like `+office`, `30m`, `large`, `#tag`, `!ui` (urgent/important), or `!i` (important).\n\n"
-        "*Pull:* Send any combination of markers (e.g., `+laptop 15m #git`) to get a matching task.\n\n"
+        "*Capture:* Just send the task. Add markers like `+office`, `30m`, `large`, `#tag`, `!ui` (urgent/important), `!i` (important), or `[ai]` (AI-offloadable).\n\n"
+        "*Pull:* Send any combination of markers (e.g., `+laptop 15m #git` or `ai` for AI-offloadable tasks) to get a matching task.\n\n"
         "*Commands:*\n"
         "• /dash: Your unified task dashboard.\n"
         "• /tags: List all active hashtags.\n"
@@ -109,16 +109,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 'i' in p.lower():
                 manual_important = 1
 
+    # Check for explicit AI-offloadable marker [ai], #ai, or word ai
+    has_ai_marker = False
+    if '[ai]' in text or '#ai' in text or re.search(r'\b(ai)\b', text):
+        has_ai_marker = True
+
     # Check if the text consists ONLY of markers
-    markers_text = re.sub(r'(\+\w+|#\w+|!\w+|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
+    markers_text = re.sub(r'(\+\w+|#\w+|!\w+|\[ai\]|\b(ai)\b|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
     
-    if not markers_text and (ctx_match or dur_match or mag_match or tags_found):
+    if not markers_text and (ctx_match or dur_match or mag_match or tags_found or has_ai_marker):
         # This is a direct pull request
         pull_ctx = ctx_match.group(1) if ctx_match else None
         pull_dur = dur_match.group(1) if dur_match else None
         pull_mag = mag_match.group(1).lower() if mag_match else None
         
-        tasks = database.get_tasks(context=pull_ctx, duration=pull_dur, magnitude=pull_mag, tags=tags_found, limit=5)
+        tasks = database.get_tasks(context=pull_ctx, duration=pull_dur, magnitude=pull_mag, tags=tags_found, limit=5, only_ai_offloadable=has_ai_marker)
         
         if tasks:
             await present_task_results(context.bot, chat_id, tasks, update, context)
@@ -127,6 +132,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if pull_ctx: filters_desc.append(f"+{pull_ctx}")
             if pull_dur: filters_desc.append(pull_dur)
             if pull_mag: filters_desc.append(pull_mag)
+            if has_ai_marker: filters_desc.append("ai")
             for t in tags_found: filters_desc.append(f"#{t}")
             await update.message.reply_text(f"No active tasks found for: {' '.join(filters_desc)}")
         return
@@ -140,6 +146,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Remove markers from raw text for cleaner decomposition
     clean_text = markers_text if markers_text else text
+    clean_text = re.sub(r'\[ai\]', '', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'#ai\b', '', clean_text, flags=re.IGNORECASE).strip()
     
     # 3. AI Metadata and Decomposition with fallback
     use_fallback = False
@@ -184,8 +192,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             p_text = "📥 *Backlog (Q4)*"
 
-        confirmation = f"✅ *{task_title}*\n"
-        confirmation += f"+{task_ctx} • {task_dur} • {task_mag} • {len(steps)} steps\n"
+        has_ai_steps = any(s.get("is_ai_offloadable") for s in steps) if isinstance(steps[0], dict) else has_ai_marker
+        confirmation = f"✅ *{'🤖 ' if has_ai_steps else ''}{task_title}*\n"
+        confirmation += f"+{task_ctx} • {task_dur} • {task_mag} • {len(steps)} steps"
+        if has_ai_steps:
+            confirmation += " (AI-Offloadable)"
+        confirmation += "\n"
         confirmation += f"Priority: {p_text}\n"
         if task_scheduled:
             confirmation += f"⏰ Scheduled: {task_scheduled}\n"
@@ -217,14 +229,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             p_text = "📥 *Backlog (Q4)*"
         
         confirmation = f"✅ *{task_title}*\n"
-        confirmation += f"+{task_ctx}\n"
+        confirmation += f"+{task_ctx}"
+        if has_ai_marker:
+            confirmation += " (AI-Offloadable)"
+        confirmation += "\n"
         confirmation += f"Priority: {p_text}\n"
         if tags_found:
             confirmation += f"{' • '.join([f'#{t.lower()}' for t in tags_found])}"
 
     # 4. Save to Database (Local & fast, minimal timeout risk)
     try:
-        task_id = database.add_task(clean_text, task_title, task_ctx, task_dur, task_mag, steps, tags=task_tags_str, scheduled_at=task_scheduled, is_urgent=task_urgent, is_important=task_important)
+        task_id = database.add_task(clean_text, task_title, task_ctx, task_dur, task_mag, steps, tags=task_tags_str, scheduled_at=task_scheduled, is_urgent=task_urgent, is_important=task_important, force_ai_offloadable=has_ai_marker)
     except Exception as e:
         logging.error(f"Error saving task to DB: {e}")
         try:
@@ -273,13 +288,15 @@ async def present_task_results(bot, chat_id, tasks, update, context_obj=None, pr
         row = []
         for idx, task in enumerate(tasks, 1):
             task_id, title, ctx, dur, mag, tags_str = task
+            has_ai = database.task_has_ai_offloadable_steps(task_id)
+            title_prefix = "🤖 " if has_ai else ""
             meta = f"+{ctx}"
             if dur and dur != 'unknown':
                 meta += f" • {dur}"
             if mag and mag != 'medium':
                 meta += f" • {mag}"
             
-            text += f"{idx}. *{title}* ({meta})\n"
+            text += f"{idx}. *{title_prefix}{title}* ({meta})\n"
             
             row.append(InlineKeyboardButton(f"Task {idx}", callback_data=f"selecttask_{task_id}"))
             if len(row) == 3:
@@ -313,14 +330,14 @@ async def surface_task(bot, chat_id, task_tuple, context_obj=None, prefix="🎯 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    tags_text = f"\n\n{' • '.join(tags_str.split(','))}" if tags_str else ""
-    meta_text = f"+{ctx} • {dur} • {mag}"
+    has_ai = database.task_has_ai_offloadable_steps(task_id)
+    title_prefix = "🤖 " if has_ai else ""
     
     for attempt in range(3):
         try:
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"{prefix}\n*{title}*\n_{meta_text}_{tags_text}",
+                text=f"{prefix}\n*{title_prefix}{title}*\n_{meta_text}_{tags_text}",
                 reply_markup=reply_markup,
                 parse_mode="Markdown",
                 connect_timeout=5,
@@ -336,15 +353,27 @@ async def surface_task(bot, chat_id, task_tuple, context_obj=None, prefix="🎯 
             await asyncio.sleep(1)
 
 async def surface_step(bot, chat_id, step_tuple, prefix="🛠️ Step:"):
-    step_id, description, task_id = step_tuple
+    if len(step_tuple) == 3:
+        step_id, description, task_id = step_tuple
+        is_ai_offloadable = 0
+    else:
+        step_id, description, task_id, is_ai_offloadable = step_tuple
     
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Done", callback_data=f"done_{step_id}"),
-            InlineKeyboardButton("🔄 Skip", callback_data=f"skip_{step_id}"),
-            InlineKeyboardButton("❌ Not Now", callback_data=f"notnow_{step_id}"),
-        ]
+    keyboard_row = [
+        InlineKeyboardButton("✅ Done", callback_data=f"done_{step_id}"),
+        InlineKeyboardButton("🔄 Skip", callback_data=f"skip_{step_id}"),
+        InlineKeyboardButton("❌ Not Now", callback_data=f"notnow_{step_id}"),
     ]
+    
+    if is_ai_offloadable:
+        prefix = "🤖 " + prefix
+        keyboard = [
+            keyboard_row,
+            [InlineKeyboardButton("🤖 Offload to AI", callback_data=f"offload_{step_id}")]
+        ]
+    else:
+        keyboard = [keyboard_row]
+        
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     for attempt in range(3):
@@ -371,13 +400,18 @@ async def list_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     magnitudes = database.get_all_magnitudes()
     durations = database.get_all_durations()
     tags = database.get_all_tags()
+    ai_count = database.get_ai_offloadable_count()
     
-    if not any([contexts, magnitudes, durations, tags]):
+    if not any([contexts, magnitudes, durations, tags, ai_count]):
         await update.message.reply_text("📭 Your task list is empty.")
         return
 
     msg = "📊 *Task Dashboard*\n\n"
     keyboard = []
+    
+    if ai_count > 0:
+        msg += f"🤖 *AI-Offloadable:* {ai_count} steps\n\n"
+        keyboard.append([InlineKeyboardButton("🤖 Pull AI Tasks", callback_data="pullai")])
 
     if contexts:
         msg += "*By Context:*\n"
@@ -460,6 +494,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Handle Dashboard Pulls
+    if data == "pullai":
+        tasks = database.get_tasks(limit=5, only_ai_offloadable=True)
+        if tasks:
+            await present_task_results(context.bot, update.effective_chat.id, tasks, update, context)
+        else:
+            await query.edit_message_text(text="No AI-offloadable tasks found.")
+        return
+
     if data.startswith("pullctx_"):
         ctx_name = data.split("_")[1]
         tasks = database.get_tasks_by_context(ctx_name, limit=5)
@@ -485,6 +527,57 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await present_task_results(context.bot, update.effective_chat.id, tasks, update, context)
         else:
             await query.edit_message_text(text=f"No tasks for size {mag_name}")
+        return
+
+    if data.startswith("offload_"):
+        step_id = int(data.split("_")[1])
+        await query.edit_message_text(text="🤖 *AI Agent working on this step...*", parse_mode="Markdown")
+        try:
+            step = database.get_step_by_id(step_id)
+            if not step:
+                await query.edit_message_text(text="Error: Step not found.")
+                return
+            _, step_desc, task_id, _ = step
+            
+            task = database.get_task_by_id(task_id)
+            if not task:
+                await query.edit_message_text(text="Error: Task not found.")
+                return
+            _, task_title, _, _, _, _ = task
+            
+            with database.get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT raw_text FROM tasks WHERE id = ?", (task_id,))
+                row = cursor.fetchone()
+                raw_text = row[0] if row else task_title
+                
+            ai_output = ai_handler.offload_step(task_title, step_desc, raw_text)
+            
+            await query.edit_message_text(
+                text=f"📋 *AI Output for step:*\n_{step_desc}_\n\n{ai_output}",
+                parse_mode="Markdown"
+            )
+            
+            follow_up_keyboard = [
+                [
+                    InlineKeyboardButton("✅ Complete Step", callback_data=f"done_{step_id}"),
+                    InlineKeyboardButton("🔄 Keep Pending", callback_data=f"keep_{step_id}")
+                ]
+            ]
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="Would you like to mark this step as completed?",
+                reply_markup=InlineKeyboardMarkup(follow_up_keyboard)
+            )
+        except Exception as e:
+            logging.error(f"Error during AI offloading: {e}")
+            await query.edit_message_text(text=f"❌ AI Offloading failed: {str(e)}")
+        return
+
+    if data.startswith("keep_"):
+        step_id = int(data.split("_")[1])
+        database.reset_step_surface(step_id)
+        await query.edit_message_text(text="🔄 Step kept pending. You can pull it again later.")
         return
 
     # Task/Step Actions

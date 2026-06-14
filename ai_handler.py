@@ -12,16 +12,27 @@ MODEL_ID = 'gemini-2.5-flash'
 def decompose_task(task_text):
     """
     Asks Gemini to break a task into discrete steps.
-    Returns a list of strings (steps).
+    Returns a list of dicts: [{"description": "...", "is_ai_offloadable": bool}]
     """
     prompt = f"""
     You are a task management expert. Break the following task into discrete, sequential, and actionable steps.
     Each step should be clear and concise. 
     
+    For each step, determine if it can be offloaded to an AI agent (e.g., drafting emails, writing code, summarizing information, brainstorming, outlining, research).
+    
     Task: {task_text}
     
-    Return the steps ONLY as a JSON array of strings. 
-    Example format: ["Step 1 description", "Step 2 description"]
+    Return the steps ONLY as a JSON array of objects.
+    Each object must have the following keys:
+    - "description": The description of the step.
+    - "is_ai_offloadable": A boolean (true or false) indicating whether this step can be offloaded to an AI agent.
+    
+    Example format:
+    [
+      {{"description": "Outline the blog post topics", "is_ai_offloadable": true}},
+      {{"description": "Draft the introduction paragraph", "is_ai_offloadable": true}},
+      {{"description": "Publish the blog post on WordPress", "is_ai_offloadable": false}}
+    ]
     """
     
     response = client.models.generate_content(
@@ -103,3 +114,28 @@ def generate_morning_nudge(weather_data, calendar_data, task_summary):
     except Exception as e:
         print(f"Error generating nudge: {e}")
         return "Good morning! I had trouble reaching the AI, but I hope you have a productive day."
+
+def offload_step(task_title, step_description, raw_text):
+    """
+    Uses Gemini to execute/draft content for a specific task step.
+    """
+    prompt = f"""
+    You are an AI assistant helping the user complete a step of their task.
+    
+    Task Title: {task_title}
+    Original Task Text: {raw_text}
+    
+    Specific Step to complete: {step_description}
+    
+    Please perform/complete this step for the user. 
+    Provide the draft, code, research, outline, email, or checklist requested. 
+    Make your response ready-to-use, practical, and highly detailed.
+    Do NOT include conversational meta-commentary (like "Here is the draft..." or "I hope this helps"). 
+    Just output the completed work directly. Use Markdown formatting if appropriate.
+    """
+    
+    response = client.models.generate_content(
+        model=MODEL_ID,
+        contents=prompt
+    )
+    return response.text.strip()

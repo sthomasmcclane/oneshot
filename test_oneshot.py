@@ -26,6 +26,32 @@ def setup_test_data():
     database.add_task("Buy groceries", "Groceries", "general", "45m", "medium", ["Milk", "Eggs", "Bread"], tags="#errands")
     database.add_task("Refactor Oneshot Bot", "Oneshot Refactor", "office", "1h", "large", ["Design", "Test", "Merge"], tags="#ai,#coding")
     database.add_task("Water plants", "Watering", "home", "5m", "small", ["Fill can", "Water"], tags="#garden")
+    
+    # Add structured AI offloadable tasks/steps
+    database.add_task(
+        "Write article about agent coding",
+        "Agent Article",
+        "office",
+        "1h",
+        "medium",
+        [
+            {"description": "Brainstorm topics", "is_ai_offloadable": True},
+            {"description": "Draft content", "is_ai_offloadable": True},
+            {"description": "Upload to CMS", "is_ai_offloadable": False}
+        ],
+        tags="#writing"
+    )
+    # Add manually forced AI task
+    database.add_task(
+        "Generate a workout plan [ai]",
+        "Workout Generation",
+        "home",
+        "30m",
+        "small",
+        ["Plan routine", "Find videos"],
+        tags="#fitness",
+        force_ai_offloadable=True
+    )
 
 def test_pull(query_text):
     print(f"\n>>> Simulating message: '{query_text}'")
@@ -138,6 +164,46 @@ def test_audit_and_pruning():
         
     print(">>> Audit and Pruning tests passed successfully!")
 
+def test_ai_offload():
+    print("\n>>> Testing AI Offloadable Tasks & Steps...")
+    # Get total AI count
+    total_ai_steps = database.get_ai_offloadable_count()
+    print(f"Total AI-offloadable steps: {total_ai_steps}")
+    # Agent Article (2 steps) + Workout Generation (2 steps) = 4 steps
+    assert total_ai_steps == 4, f"Expected 4 AI steps, got {total_ai_steps}"
+    
+    # Check task level helpers
+    # Find task IDs
+    with database.get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM tasks WHERE title = 'Agent Article'")
+        article_task_id = cursor.fetchone()[0]
+        cursor.execute("SELECT id FROM tasks WHERE title = 'Faucet Fix'")
+        faucet_task_id = cursor.fetchone()[0]
+        cursor.execute("SELECT id FROM tasks WHERE title = 'Workout Generation'")
+        workout_task_id = cursor.fetchone()[0]
+        
+    assert database.task_has_ai_offloadable_steps(article_task_id) is True, "Agent Article should have AI-offloadable steps"
+    assert database.task_has_ai_offloadable_steps(faucet_task_id) is False, "Faucet Fix should NOT have AI-offloadable steps"
+    assert database.task_has_ai_offloadable_steps(workout_task_id) is True, "Workout Generation should have AI-offloadable steps"
+    
+    # Check get_next_step_for_task returns 4 elements and correct offloadable status
+    next_step_article = database.get_next_step_for_task(article_task_id)
+    print(f"Next step for Agent Article: {next_step_article}")
+    # Should be a 4-tuple: (id, description, task_id, is_ai_offloadable)
+    assert len(next_step_article) == 4, f"Expected next_step to be 4-tuple, got length {len(next_step_article)}"
+    assert next_step_article[3] == 1, "First step of Agent Article should be AI-offloadable"
+    
+    # Check pull AI tasks
+    ai_tasks = database.get_tasks(only_ai_offloadable=True, limit=5)
+    ai_titles = [t[1] for t in ai_tasks]
+    print(f"AI-offloadable tasks: {ai_titles}")
+    assert "Agent Article" in ai_titles, "Agent Article should be in AI tasks pull"
+    assert "Workout Generation" in ai_titles, "Workout Generation should be in AI tasks pull"
+    assert "Faucet Fix" not in ai_titles, "Faucet Fix should NOT be in AI tasks pull"
+    
+    print(">>> AI Offload tests passed successfully!")
+
 if __name__ == "__main__":
     setup_test_data()
     
@@ -167,6 +233,9 @@ if __name__ == "__main__":
     
     # 9. Test Audit and Pruning
     test_audit_and_pruning()
+    
+    # 10. Test AI Offload features
+    test_ai_offload()
     
     # Clean up test DB
     if os.path.exists(TEST_DB):

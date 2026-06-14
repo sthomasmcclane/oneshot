@@ -4,11 +4,20 @@
 * **Bot Status:** Operational and healthy (verified container logs).
 * **API Key Verification:** Confirmed unlinked API key works successfully on the standard Free Tier.
 * **Last Issue Fixed:** Fixed Telegram API timeout crashes by separating DB saves from UI edits, and wrapping surfacing logic in retry loops.
-* **Deployment:** Applied to production container and rebuilt on 2026-06-08.
+* **Deployment:** Applied to production container and rebuilt on 2026-06-15.
 * **Billing Optimization:** Streamlined enabled GCP APIs in all projects on 2026-06-06 to prevent accidental charges.
 
 
 ---
+
+### Recent Changes (2026-06-15)
+* **AI Task Offloading (`[ai]` / `#ai` / `🤖 Offload to AI`)**:
+  - Implemented automatic step-by-step AI-offloadability evaluation during decomposition using Gemini (`ai_handler.py`).
+  - Added support for explicit manual markers `[ai]` and `#ai` during task capture to force all steps as AI-offloadable.
+  - Added `🤖 Offload to AI` inline keyboard button for surfaced steps. When clicked, it drafts the material using Gemini and prompts the user to complete the step.
+  - Added dashboard integration showing pending AI-offloadable steps and a `🤖 Pull AI Tasks` button, plus `ai` keyword support in search filters.
+  - Added migration column `is_ai_offloadable` (INTEGER) to the `steps` table schema.
+  - Executed a retroactive batch classification script to update all 149 active steps, identifying and updating **93 steps** as AI-offloadable.
 
 ### Recent Changes (2026-06-08)
 * **Telegram Timeout Crash Fix & Retries**:

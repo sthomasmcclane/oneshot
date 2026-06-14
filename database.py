@@ -81,6 +81,7 @@ def init_db():
                 is_surfaced BOOLEAN DEFAULT 0,
                 is_completed BOOLEAN DEFAULT 0,
                 is_skipped BOOLEAN DEFAULT 0,
+                is_ai_offloadable INTEGER DEFAULT 0,
                 surfaced_at TIMESTAMP,
                 completed_at TIMESTAMP,
                 FOREIGN KEY (task_id) REFERENCES tasks (id)
@@ -93,7 +94,8 @@ def init_db():
         step_migrations = [
             ('is_completed', "ALTER TABLE steps ADD COLUMN is_completed BOOLEAN DEFAULT 0"),
             ('completed_at', "ALTER TABLE steps ADD COLUMN completed_at TIMESTAMP"),
-            ('is_skipped', "ALTER TABLE steps ADD COLUMN is_skipped BOOLEAN DEFAULT 0")
+            ('is_skipped', "ALTER TABLE steps ADD COLUMN is_skipped BOOLEAN DEFAULT 0"),
+            ('is_ai_offloadable', "ALTER TABLE steps ADD COLUMN is_ai_offloadable INTEGER DEFAULT 0")
         ]
         for col, sql in step_migrations:
             if col not in columns:
@@ -104,7 +106,7 @@ def init_db():
         
         conn.commit()
 
-def add_task(raw_text, title, context, duration, magnitude, steps_list, tags=None, scheduled_at=None, is_urgent=0, is_important=0):
+def add_task(raw_text, title, context, duration, magnitude, steps_list, tags=None, scheduled_at=None, is_urgent=0, is_important=0, force_ai_offloadable=False):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         try:
@@ -115,11 +117,18 @@ def add_task(raw_text, title, context, duration, magnitude, steps_list, tags=Non
             
             task_id = cursor.lastrowid
             
-            for i, step_desc in enumerate(steps_list, 1):
+            for i, step_item in enumerate(steps_list, 1):
+                if isinstance(step_item, dict):
+                    step_desc = step_item.get("description", "")
+                    is_offloadable = 1 if (step_item.get("is_ai_offloadable") or force_ai_offloadable) else 0
+                else:
+                    step_desc = step_item
+                    is_offloadable = 1 if force_ai_offloadable else 0
+                
                 cursor.execute('''
-                    INSERT INTO steps (task_id, sequence, description)
-                    VALUES (?, ?, ?)
-                ''', (task_id, i, f"{i:02d} - Step: {step_desc} (task: {title})"))
+                    INSERT INTO steps (task_id, sequence, description, is_ai_offloadable)
+                    VALUES (?, ?, ?, ?)
+                ''', (task_id, i, f"{i:02d} - Step: {step_desc} (task: {title})", is_offloadable))
                 
             conn.commit()
             return task_id
@@ -127,7 +136,7 @@ def add_task(raw_text, title, context, duration, magnitude, steps_list, tags=Non
             conn.rollback()
             raise e
 
-def get_tasks(context=None, duration=None, magnitude=None, tags=None, limit=1):
+def get_tasks(context=None, duration=None, magnitude=None, tags=None, limit=1, only_ai_offloadable=False):
     """
     Flexible task retrieval supporting multiple filters.
     """
@@ -141,6 +150,9 @@ def get_tasks(context=None, duration=None, magnitude=None, tags=None, limit=1):
             WHERE s.is_completed = 0 AND s.is_skipped = 0 AND t.status = 'active'
         '''
         params = []
+        
+        if only_ai_offloadable:
+            query += " AND s.is_ai_offloadable = 1"
         
         if context:
             query += " AND LOWER(t.context) = ?"
@@ -299,7 +311,7 @@ def get_next_step_for_task(task_id):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, description, task_id 
+            SELECT id, description, task_id, is_ai_offloadable
             FROM steps 
             WHERE task_id = ? AND is_completed = 0 AND is_skipped = 0
             ORDER BY sequence ASC
@@ -311,7 +323,7 @@ def get_step_by_id(step_id):
     """Gets details for a specific step by its ID."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, description, task_id FROM steps WHERE id = ?", (step_id,))
+        cursor.execute("SELECT id, description, task_id, is_ai_offloadable FROM steps WHERE id = ?", (step_id,))
         return cursor.fetchone()
 
 def get_all_tags():
@@ -472,30 +484,30 @@ def clear_all_data():
         cursor.execute('DELETE FROM tasks')
         conn.commit()
 
-def reinstate_recent_steps(hours=48):
-    """Returns recently surfaced steps back to the queue."""
-    from datetime import timedelta
+def task_has_ai_offloadable_steps(task_id):
+    """Check if a task has any active, uncompleted, non-skipped AI-offloadable steps."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
-        
-        # Find steps
         cursor.execute('''
-            SELECT id, description, surfaced_at 
+            SELECT COUNT(*) 
             FROM steps 
-            WHERE is_surfaced = 1 AND surfaced_at > ?
-        ''', (cutoff,))
-        recent_steps = cursor.fetchall()
-        
-        if recent_steps:
-            cursor.execute('''
-                UPDATE steps 
-                SET is_surfaced = 0, surfaced_at = NULL 
-                WHERE id IN (SELECT id FROM steps WHERE is_surfaced = 1 AND surfaced_at > ?)
-            ''', (cutoff,))
-            conn.commit()
-            
-        return recent_steps
+            WHERE task_id = ? AND is_completed = 0 AND is_skipped = 0 AND is_ai_offloadable = 1
+        ''', (task_id,))
+        row = cursor.fetchone()
+        return row[0] > 0 if row else False
+
+def get_ai_offloadable_count():
+    """Returns the count of active, uncompleted, non-skipped AI-offloadable steps."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) 
+            FROM steps s
+            JOIN tasks t ON s.task_id = t.id
+            WHERE s.is_completed = 0 AND s.is_skipped = 0 AND s.is_ai_offloadable = 1 AND t.status = 'active'
+        ''')
+        row = cursor.fetchone()
+        return row[0] if row else 0
 
 if __name__ == "__main__":
     init_db()

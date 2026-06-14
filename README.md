@@ -12,20 +12,25 @@ OneShot Tasks is a minimalist, Telegram-based task manager designed for the "Get
 Just send a message to the bot. 
 - **AI Decomposition**: Every task is automatically broken down into discrete, sequential steps using Gemini.
 - **Auto-Metadata**: The AI infers context, duration, magnitude, tags, and priority even if you don't explicitly provide them.
-- **Inline Markers**: Use `+context`, `{N}m`, `small|medium|large`, `#tag`, or `!u`/`!i`/`!ui` (priority) directly in your capture message to override AI inference.
+- **Inline Markers**: Use `+context`, `{N}m`, `small|medium|large`, `#tag`, `!u`/`!i`/`!ui` (priority), or `[ai]` (AI-offloadable) directly in your capture message to override AI inference.
 - **Intelligent Scheduling**: Add a schedule marker (e.g., `#schedule 15:30`, `tomorrow 9am`, or just `9am`) to have the bot automatically surface the task at that time.
 
 ### 2. The "Marker Pull" System
 Stop digging through lists. Get the right task for the right moment.
-- Send just the markers (e.g., `+laptop 15m #coding`) to instantly retrieve the highest-priority task matching those criteria.
-- **Combined Filters**: Supports intersection filtering across Context, Duration, Magnitude, and Hashtags.
+- Send just the markers (e.g., `+laptop 15m #coding` or `ai` for AI-offloadable items) to instantly retrieve the highest-priority task matching those criteria.
+- **Combined Filters**: Supports intersection filtering across Context, Duration, Magnitude, Hashtags, and AI-offloadability.
 
 ### 3. Reality Integration
 - **Morning Nudges**: Every morning at 06:00, the bot synthesizes your weather, calendar, and pending tasks into a conversational nudge.
 - **Context Awareness**: Suggestions are tailored to your actual schedule and environmental conditions (e.g., "It's sunny and your morning is clear, tackle those +yard tasks").
 
-### 4. Minimalist Interface
-- `/dash`: A unified dashboard for quick pulls by context, size, or tag.
+### 4. AI Step Offloading
+- **Step Inference**: Gemini automatically detects which individual steps of a task are offloadable to an AI agent (e.g. brainstorming, writing drafts, writing code, summarizing).
+- **One-Click execution**: AI-offloadable steps are shown with a `🤖 Offload to AI` button. Clicking it commands the bot to execute/draft that step using Gemini on the spot.
+- **Dashboard & Pull Integration**: The dashboard displays the count of pending AI steps with a `🤖 Pull AI Tasks` button to pull them instantly.
+
+### 5. Minimalist Interface
+- `/dash`: A unified dashboard for quick pulls by context, size, tag, or AI-offloadability.
 - `/tags`: Overview of all active project hashtags.
 - `/nudge`: Manually trigger a morning nudge (useful for testing or afternoon planning).
 - `/audit`: Trigger an interactive cleanup of tasks that have been inactive for over 30 days.
