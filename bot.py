@@ -30,7 +30,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🚀 *OneShot Tasks*\n\n"
-        "*Capture:* Just send the task. Add markers like `+office`, `30m`, `large`, `#tag`, `!ui` (urgent/important), `!i` (important), or `[ai]` (AI-offloadable).\n\n"
+        "*Capture:* Just send the task. Add markers like `+office`, `30m`, `large`, `#tag`, `!ui` (priority), `[ai]` (AI-offloadable), or `[single]` (bypass AI decomposition).\n\n"
+        "*Reply-to-Done:* Explicitly reply (e.g., swipe to reply or long-press > Reply) to a task-confirmation message with `done` to complete the entire task, or `delete` to discard it.\n\n"
         "*Pull:* Send any combination of markers (e.g., `+laptop 15m #git` or `ai` for AI-offloadable tasks) to get a matching task.\n\n"
         "*Commands:*\n"
         "• /dash: Your unified task dashboard.\n"
@@ -89,6 +90,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower().strip()
     chat_id = update.effective_chat.id
 
+    # Check if this message is a reply to a task-confirmation message
+    if update.message.reply_to_message:
+        replied_msg_id = update.message.reply_to_message.message_id
+        msg_to_task = context.bot_data.get('msg_to_task', {})
+        if replied_msg_id in msg_to_task:
+            task_id = msg_to_task[replied_msg_id]
+            reply_text = text.lower().strip()
+            
+            if reply_text in ('done', 'complete', 'completed', '✅'):
+                database.complete_task(task_id)
+                await update.message.reply_text("🏁 Task and all steps marked completed!")
+                del msg_to_task[replied_msg_id]
+                return
+            elif reply_text in ('delete', 'remove', 'del', '🗑️', 'x'):
+                database.delete_task(task_id)
+                await update.message.reply_text("🗑️ Task deleted.")
+                del msg_to_task[replied_msg_id]
+                return
+            else:
+                # Surface task buttons for quick actions
+                task = database.get_task_by_id(task_id)
+                if task:
+                    await surface_task(context.bot, chat_id, task, context, prefix="🎯 Actions for Task:")
+                else:
+                    await update.message.reply_text("Error: Task not found.")
+                return
+
     # 1. Universal Pull / Marker-Only Logic
     # Identify markers in the text
     ctx_match = re.search(r'\+(\w+)', text)
@@ -114,8 +142,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if '[ai]' in text or '#ai' in text or re.search(r'\b(ai)\b', text):
         has_ai_marker = True
 
+    # Check for explicit single-step marker [single] or #single
+    has_single_marker = False
+    if '[single]' in text or '#single' in text:
+        has_single_marker = True
+
     # Check if the text consists ONLY of markers
-    markers_text = re.sub(r'(\+\w+|#\w+|!\w+|\[ai\]|\b(ai)\b|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
+    markers_text = re.sub(r'(\+\w+|#\w+|!\w+|\[ai\]|\[single\]|\b(ai)\b|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
     
     if not markers_text and (ctx_match or dur_match or mag_match or tags_found or has_ai_marker):
         # This is a direct pull request
@@ -147,13 +180,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Remove markers from raw text for cleaner decomposition
     clean_text = markers_text if markers_text else text
     clean_text = re.sub(r'\[ai\]', '', clean_text, flags=re.IGNORECASE)
-    clean_text = re.sub(r'#ai\b', '', clean_text, flags=re.IGNORECASE).strip()
+    clean_text = re.sub(r'#ai\b', '', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'\[single\]', '', clean_text, flags=re.IGNORECASE)
+    clean_text = re.sub(r'#single\b', '', clean_text, flags=re.IGNORECASE).strip()
     
     # 3. AI Metadata and Decomposition with fallback
     use_fallback = False
     try:
         ai_meta = ai_handler.extract_metadata(clean_text)
-        steps = ai_handler.decompose_task(clean_text)
+        if has_single_marker:
+            steps = [clean_text]
+        else:
+            steps = ai_handler.decompose_task(clean_text)
     except Exception as e:
         logging.error(f"Gemini API error during task processing: {e}")
         use_fallback = True
@@ -249,13 +287,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 5. Update UI (Network-dependent, wraps failures safely)
+    confirm_msg = None
     try:
-        await status_msg.edit_text(confirmation, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
+        confirm_msg = await status_msg.edit_text(confirmation, parse_mode="Markdown", connect_timeout=5, write_timeout=5)
     except Exception as e:
         logging.warning(f"Failed to edit status message: {e}. Trying backup reply.")
         try:
             # Fallback to sending a new message if editing the existing one failed
-            await update.message.reply_text(
+            confirm_msg = await update.message.reply_text(
                 f"Saved: *{task_title}*\n+{task_ctx} (status message update failed)",
                 parse_mode="Markdown",
                 connect_timeout=5,
@@ -263,6 +302,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as fallback_err:
             logging.error(f"Backup reply failed: {fallback_err}")
+
+    # Map message ID to task ID for reply actions
+    if confirm_msg:
+        if 'msg_to_task' not in context.bot_data:
+            context.bot_data['msg_to_task'] = {}
+        context.bot_data['msg_to_task'][confirm_msg.message_id] = task_id
 
 async def list_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tags = database.get_all_tags()

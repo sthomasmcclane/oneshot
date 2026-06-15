@@ -11,6 +11,14 @@
 ---
 
 ### Recent Changes (2026-06-15)
+* **Reply-to-Done / Triage (`done` / `delete`)**:
+  - Implemented the ability to explicitly reply (e.g. swipe to reply or long-press > Reply) to a task-confirmation message to mark the entire task completed or delete it.
+  - Replying with anything else surfaces the inline action keyboard for that task.
+  - Updated the in-bot `/help` text and [README.md](file:///home/scott/git/oneshot/README.md) documentation.
+* **Single Step Bypass (`[single]` / `#single`)**:
+  - Implemented the ability to bypass AI decomposition and add a task as a single step.
+  - Filtered markers from clean task text and verified with a new unit test suite in [test_oneshot.py](file:///home/scott/git/oneshot/test_oneshot.py).
+  - Updated [README.md](file:///home/scott/git/oneshot/README.md) marker list.
 * **AI Task Offloading (`[ai]` / `#ai` / `🤖 Offload to AI`)**:
   - Implemented automatic step-by-step AI-offloadability evaluation during decomposition using Gemini (`ai_handler.py`).
   - Added support for explicit manual markers `[ai]` and `#ai` during task capture to force all steps as AI-offloadable.

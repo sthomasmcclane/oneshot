@@ -204,6 +204,45 @@ def test_ai_offload():
     
     print(">>> AI Offload tests passed successfully!")
 
+def test_single_step_parsing():
+    print("\n>>> Testing [single] and #single marker parsing...")
+    # Simulate the regex and extraction logic from bot.py
+    test_cases = [
+        ("Buy milk +home [single]", True, "Buy milk"),
+        ("Call landlord #single !u", True, "Call landlord"),
+        ("Finish the report +office", False, "Finish the report"),
+        ("Learn to bake [single] #kitchen", True, "Learn to bake"),
+    ]
+    
+    for raw, expected_single, expected_clean in test_cases:
+        text = raw.lower().strip()
+        
+        # Check single marker
+        has_single = False
+        if '[single]' in text or '#single' in text:
+            has_single = True
+            
+        assert has_single == expected_single, f"Failed single check for: {raw}"
+        
+        # Extract markers (simulate bot.py text cleaning)
+        ctx_match = re.search(r'\+(\w+)', text)
+        dur_match = re.search(r'(\d+[mh])', text)
+        mag_match = re.search(r'\b(small|medium|large)\b', text, re.IGNORECASE)
+        tags_found = re.findall(r'#(\w+)', text)
+        
+        # Strip out markers
+        markers_text = re.sub(r'(\+\w+|#\w+|!\w+|\[ai\]|\[single\]|\b(ai)\b|\d+[mh]|\b(small|medium|large)\b)', '', text).strip()
+        
+        clean_text = markers_text if markers_text else text
+        clean_text = re.sub(r'\[ai\]', '', clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r'#ai\b', '', clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r'\[single\]', '', clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r'#single\b', '', clean_text, flags=re.IGNORECASE).strip()
+        
+        assert clean_text == expected_clean.lower(), f"Clean text mismatch: '{clean_text}' vs '{expected_clean.lower()}'"
+        
+    print(">>> Single step parsing tests passed successfully!")
+
 if __name__ == "__main__":
     setup_test_data()
     
@@ -237,7 +276,11 @@ if __name__ == "__main__":
     # 10. Test AI Offload features
     test_ai_offload()
     
+    # 11. Test Single-step parsing features
+    test_single_step_parsing()
+    
     # Clean up test DB
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)
+
 

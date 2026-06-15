@@ -12,8 +12,9 @@ OneShot Tasks is a minimalist, Telegram-based task manager designed for the "Get
 Just send a message to the bot. 
 - **AI Decomposition**: Every task is automatically broken down into discrete, sequential steps using Gemini.
 - **Auto-Metadata**: The AI infers context, duration, magnitude, tags, and priority even if you don't explicitly provide them.
-- **Inline Markers**: Use `+context`, `{N}m`, `small|medium|large`, `#tag`, `!u`/`!i`/`!ui` (priority), or `[ai]` (AI-offloadable) directly in your capture message to override AI inference.
+- **Inline Markers**: Use `+context`, `{N}m`, `small|medium|large`, `#tag`, `!u`/`!i`/`!ui` (priority), `[ai]` (AI-offloadable), or `[single]`/`#single` (bypass AI decomposition and save as a single-step task) directly in your capture message to override AI inference.
 - **Intelligent Scheduling**: Add a schedule marker (e.g., `#schedule 15:30`, `tomorrow 9am`, or just `9am`) to have the bot automatically surface the task at that time.
+- **Reply-to-Done / Triage**: Explicitly reply (e.g., swipe to reply or long-press > Reply) to any task-confirmation message with `done` to mark the entire task completed, or `delete` to discard it. Replying with anything else will surface an inline keyboard menu with quick actions.
 
 ### 2. The "Marker Pull" System
 Stop digging through lists. Get the right task for the right moment.
