@@ -1,14 +1,18 @@
 # Oneshot Tasks Status
 
 ### Current Status
-* **Bot Status:** Operational and healthy (verified container logs).
+* **Bot Status:** Pivoted to V2 Architecture (Google Tasks Backend + Zero Syntax).
 * **API Key Verification:** Confirmed unlinked API key works successfully on the standard Free Tier.
-* **Last Issue Fixed:** Fixed Telegram API timeout crashes by separating DB saves from UI edits, and wrapping surfacing logic in retry loops.
-* **Deployment:** Applied to production container and rebuilt on 2026-06-15.
-* **Billing Optimization:** Streamlined enabled GCP APIs in all projects on 2026-06-06 to prevent accidental charges.
-
+* **Storage backend:** Google Tasks API (OAuth 2.0 user credentials). Local SQLite `database.py` deprecated.
+* **Deployment:** Pending deployment of V2 changes to `/opt/docker/`.
 
 ---
+
+### Recent Changes (2026-07-16) - V2 Overhaul
+* **Google Tasks Pivot**: Removed SQLite (`database.py`) and integrated `tasks_handler.py` to sync all tasks and decomposed steps directly to the user's personal Google Tasks list ("OneShot Tasks").
+* **Zero Syntax Capture**: Updated `ai_handler.py` to infer all metadata (Context, Duration, Energy Required) purely from natural language. Explicit syntax markers are no longer required.
+* **The "Now" View**: Completely overhauled `bot.py` to remove `/dash` and manual pull logic. Sending a `.` to the bot now automatically evaluates active tasks in Google Tasks and surfaces exactly one optimized task.
+* **OAuth 2.0 Auth Flow**: Added `oauth_setup.py` to generate user-level `token.json` credentials for full access to the Google Tasks API (since Service Accounts cannot access personal task lists).
 
 ### Recent Changes (2026-06-15)
 * **Reply-to-Done / Triage (`done` / `delete`)**:
@@ -60,3 +64,18 @@
   * **sublime-vial-474408-f6 (GEM Tool):** Disabled Cloud Storage, BigQuery, Custom Search, and Text-to-Speech APIs.
   * **oneshotbot (OneShotBot):** Disabled Cloud Storage, BigQuery, and Dataform/Dataplex APIs (retained only Google Calendar API).
   * **gen-lang-client-0810836254 (Gemini CLI Personal):** Verified clean state (only Gemini API enabled).
+
+---
+
+### 🚨 Critical Rethink: Energy-Aware Surfacing
+Based on months of real-world use, frictionless capture is working, but task surfacing is ineffective. The bot surfaces tasks without regarding the user's biological reality (e.g., suggesting "Mow the lawn" on a Saturday morning when the user is historically drained). 
+
+**The Plan for Oneshot V2 Surfacing & ADHD Accommodation:**
+*The core philosophy: The system must work despite inconsistent use and must not require consistency to function. Remove the need to use features correctly.*
+
+1. **The Energy & Mood Profiler:** Implement an adaptive, background-polling mechanism (via APScheduler and inline keyboards: 🔋, 🪫, 🧠, 🌫️). The polling frequency will decay over time as the bot builds a reliable baseline profile of the user's weekly energy fluctuations.
+2. **Implicit Tagging (Zero New Syntax):** Update the Gemini decomposition step to automatically rate the physical/mental energy required (1-3), infer the context (work/personal) from the time/calendar, and estimate the duration, eliminating the need for manual markers like `+work {30}m`.
+3. **The "Now" View as Default (Empathy Algorithm):** When opening the bot or sending a simple `.`, it surfaces exactly *one* highest-priority task you can do right now based on time, location, and inferred energy. No lists, no choices.
+4. **Shame-Free Decay:** After 14 days of inactivity, tasks automatically archive to a "someday" pile so they don't accumulate guilt-debt. A monthly, pressure-free review prompt will summarize what was archived.
+5. **Automatic Rescue:** If a specific context pull (like `+work`) yields zero results, the bot silently searches for unmarked tasks mentioning work keywords or overdue tasks, offering them instead of a blank screen.
+6. **One-Tap Focus & Escalation:** Any surfaced task includes a `[Start Focus]` button. Clicking it sets a 15/25/45 min timer. If you don't check in when it finishes, the notification escalates.

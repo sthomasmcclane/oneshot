@@ -55,20 +55,17 @@ def extract_metadata(task_text):
     Analyzes task text to extract metadata and a concise title.
     """
     prompt = f"""
-    Analyze the following task and extract or infer the following parameters:
+    Analyze the following task and strictly infer the following parameters from the natural language (do not rely on explicit syntax):
     1. Concise Title: A short, actionable version of the task.
-    2. Context: (e.g., office, house, shed, car, shops, laptop) - single word.
+    2. Context: (e.g., office, home, errands, laptop) - single word.
     3. Duration: (e.g., 15m, 1h, 4h).
-    4. Magnitude: (small, medium, large).
-    5. Tags: Extract any hashtags from the text (e.g., #git, #shopping).
-    6. Schedule: Extract any time-based scheduling information (e.g., "#schedule 15:30", "tomorrow 9am", "9am", "at 4pm", "tonight"). Convert this to an ISO 8601 timestamp string (e.g., "2026-05-11T15:30:00"). Use the current date and time as a reference: {datetime.now().isoformat()}. If the user provides a time without a date, assume today. If the time has already passed today, assume tomorrow. If no schedule is found, return null.
-    7. Urgent: Infer if the task is urgent (time-sensitive, needs immediate attention). Return true or false.
-    8. Important: Infer if the task is important (high value, aligns with key goals or projects). Return true or false.
+    4. Energy Required: An integer from 1 to 3 representing the physical/mental toll (1=Low/Easy, 2=Medium, 3=High/Draining).
+    5. Schedule: Extract any time-based scheduling information (e.g., "tomorrow 9am", "tonight"). Convert this to an ISO 8601 timestamp string (e.g., "2026-05-11T15:30:00"). Use the current date and time as a reference: {datetime.now().isoformat()}. If the user provides a time without a date, assume today. If the time has already passed today, assume tomorrow. If no schedule is found, return null.
     
     Task: {task_text}
     
     Return the result ONLY as a JSON object.
-    Example: {{"title": "Order batteries", "context": "office", "duration": "30m", "magnitude": "small", "tags": ["#electronics", "#shopping"], "scheduled_at": "2026-05-11T15:30:00", "urgent": false, "important": true}}
+    Example: {{"title": "Order batteries", "context": "home", "duration": "15m", "energy": 1, "scheduled_at": "2026-05-11T15:30:00"}}
     """
     
     response = client.models.generate_content(
