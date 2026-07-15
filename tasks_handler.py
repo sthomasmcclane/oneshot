@@ -57,8 +57,8 @@ def create_task(title, metadata, steps):
     parent_task = service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
     parent_id = parent_task['id']
     
-    # Create subtasks
-    for step in steps:
+    # Create subtasks (reversed so they appear in correct chronological order in the UI)
+    for step in reversed(steps):
         step_desc = step.get('description', step) if isinstance(step, dict) else step
         is_ai = step.get('is_ai_offloadable', False) if isinstance(step, dict) else False
         
