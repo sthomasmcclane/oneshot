@@ -9,6 +9,7 @@
 ---
 
 ### Recent Changes (2026-07-16) - V2 Overhaul
+* **Shiny Object Incubator**: Added a dedicated flow for capturing non-urgent project ideas. Ideas (auto-detected or manually flagged with `idea:`) bypass decomposition and are sent to a separate "Incubator" Google Tasks list. A 30-day scheduled job automatically pings the user via Telegram to either officially start the project (which then decomposes and promotes it) or trash it.
 * **Google Tasks Pivot**: Removed SQLite (`database.py`) and integrated `tasks_handler.py` to sync all tasks and decomposed steps directly to the user's personal Google Tasks list ("OneShot Tasks").
 * **Zero Syntax Capture**: Updated `ai_handler.py` to infer all metadata (Context, Duration, Energy Required) purely from natural language. Explicit syntax markers are no longer required.
 * **The "Now" View**: Completely overhauled `bot.py` to remove `/dash` and manual pull logic. Sending a `.` to the bot now automatically evaluates active tasks in Google Tasks and surfaces exactly one optimized task.

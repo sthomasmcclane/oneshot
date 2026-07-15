@@ -23,6 +23,12 @@ Stop digging through lists and experiencing decision fatigue.
 ### 3. Reality Integration
 - **Morning Nudges**: Every morning at 06:00, the bot synthesizes your weather, calendar, and pending tasks into a conversational nudge (e.g., "It's sunny and your morning is clear, tackle those yard tasks").
 
+### 4. Shiny Object Incubator
+Combat "Shiny Object Syndrome" by quarantining new project ideas so they don't distract you.
+- **Auto-Detection & Flags**: Gemini infers if a task is a shiny new project, or you can explicitly flag it by starting your message with `idea:` (e.g., `idea: Build a laser cutter`).
+- **30-Day Maturation**: The bot bypasses decomposition and quietly places the idea in a separate "Incubator" Google Tasks list with a 30-day maturity timer.
+- **Accountability Nudge**: After 30 days, the bot's morning job will ping you via Telegram. You can then `✅ Start Project` (which decomposes it into actionable steps and moves it to active tasks) or `🗑️ Trash it`.
+
 ---
 
 ## 🛠️ Implementation Details
