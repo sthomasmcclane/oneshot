@@ -139,7 +139,7 @@ def create_shiny_object(title):
     service = get_service()
     tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
     import datetime
-    maturity_date = (datetime.datetime.now() + datetime.timedelta(days=14)).strftime('%Y-%m-%d')
+    maturity_date = (datetime.datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
     notes = f"[Maturity: {maturity_date}]\nIncubating shiny object."
     task_body = {'title': title, 'notes': notes}
     service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()

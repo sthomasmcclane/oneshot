@@ -42,11 +42,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ai_meta = ai_handler.extract_metadata(text)
         task_title = ai_meta.get('title', text[:30])
         
+        # Explicit override for "idea:" prefix
+        if text.lower().startswith('idea:'):
+            ai_meta['is_shiny_object'] = True
+            if task_title.lower().startswith('idea:'):
+                task_title = task_title[5:].strip()
+                
         if ai_meta.get('is_shiny_object'):
             tasks_handler.create_shiny_object(task_title)
             confirmation = (
                 f"✨ *Shiny Object Detected: {task_title}*\n"
-                f"I've placed this in the Incubator. I'll check back with you in 14 days before we commit any time to it."
+                f"I've placed this in the Incubator. I'll check back with you in 30 days before we commit any time to it."
             )
             await status_msg.edit_text(confirmation, parse_mode="Markdown")
             return
@@ -111,7 +117,7 @@ async def check_incubator_job(context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             msg = (
-                f"🕰️ *14 Days Ago...*\n\n"
+                f"🕰️ *30 Days Ago...*\n\n"
                 f"You had the idea to: *{task['title']}*\n\n"
                 f"Are you still interested in this, or was it just a shiny object?"
             )
