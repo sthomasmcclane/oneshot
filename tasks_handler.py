@@ -123,3 +123,52 @@ def delete_task(task_id):
     service = get_service()
     tasklist_id = get_or_create_tasklist(service)
     service.tasks().delete(tasklist=tasklist_id, task=task_id).execute()
+
+TASK_LIST_INCUBATOR_TITLE = 'Incubator'
+
+def get_or_create_list(service, title):
+    results = service.tasklists().list(maxResults=50).execute()
+    items = results.get('items', [])
+    for item in items:
+        if item['title'] == title:
+            return item['id']
+    new_list = service.tasklists().insert(body={'title': title}).execute()
+    return new_list['id']
+
+def create_shiny_object(title):
+    service = get_service()
+    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    import datetime
+    maturity_date = (datetime.datetime.now() + datetime.timedelta(days=14)).strftime('%Y-%m-%d')
+    notes = f"[Maturity: {maturity_date}]\nIncubating shiny object."
+    task_body = {'title': title, 'notes': notes}
+    service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
+
+def get_mature_shiny_objects():
+    service = get_service()
+    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    results = service.tasks().list(tasklist=tasklist_id, showCompleted=False, showHidden=False).execute()
+    items = results.get('items', [])
+    mature_tasks = []
+    import datetime
+    import re
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    for item in items:
+        notes = item.get('notes', '')
+        match = re.search(r'\[Maturity: (\d{4}-\d{2}-\d{2})\]', notes)
+        if match:
+            maturity_date = match.group(1)
+            if maturity_date <= today:
+                mature_tasks.append({'id': item['id'], 'title': item['title']})
+    return mature_tasks
+
+def delete_shiny_object(task_id):
+    service = get_service()
+    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    service.tasks().delete(tasklist=tasklist_id, task=task_id).execute()
+
+def get_shiny_object_title(task_id):
+    service = get_service()
+    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    task = service.tasks().get(tasklist=tasklist_id, task=task_id).execute()
+    return task.get('title', 'Unknown Task')

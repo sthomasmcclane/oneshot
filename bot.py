@@ -2,7 +2,7 @@ import os
 import logging
 import random
 import asyncio
-from datetime import datetime
+import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -40,9 +40,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Zero Syntax Inference
         ai_meta = ai_handler.extract_metadata(text)
-        steps = ai_handler.decompose_task(text)
-        
         task_title = ai_meta.get('title', text[:30])
+        
+        if ai_meta.get('is_shiny_object'):
+            tasks_handler.create_shiny_object(task_title)
+            confirmation = (
+                f"✨ *Shiny Object Detected: {task_title}*\n"
+                f"I've placed this in the Incubator. I'll check back with you in 14 days before we commit any time to it."
+            )
+            await status_msg.edit_text(confirmation, parse_mode="Markdown")
+            return
+            
+        steps = ai_handler.decompose_task(text)
         
         # Save to Google Tasks
         tasks_handler.create_task(task_title, ai_meta, steps)
@@ -89,6 +98,27 @@ async def surface_now_task(update, context):
         logging.error(f"Error surfacing task: {e}")
         await update.message.reply_text(f"Error pulling tasks from Google: {str(e)}")
 
+async def check_incubator_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        mature_tasks = tasks_handler.get_mature_shiny_objects()
+        for task in mature_tasks:
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Start Project", callback_data=f"incubatestart_{task['id']}"),
+                    InlineKeyboardButton("🗑️ Trash it", callback_data=f"incubatetrash_{task['id']}")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            msg = (
+                f"🕰️ *14 Days Ago...*\n\n"
+                f"You had the idea to: *{task['title']}*\n\n"
+                f"Are you still interested in this, or was it just a shiny object?"
+            )
+            await context.bot.send_message(chat_id=AUTHORIZED_USER_ID, text=msg, reply_markup=reply_markup, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Error checking incubator: {e}")
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -104,6 +134,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ Error completing task: {str(e)}")
     elif data == "skip":
         await query.edit_message_text("⏭️ Task skipped for now. Send '.' to pull another.")
+    elif data.startswith("incubatestart_"):
+        task_id = data.split("_", 1)[1]
+        try:
+            await query.edit_message_text("🧠 Warming up the incubator... Decomposing project into actionable steps...")
+            title = tasks_handler.get_shiny_object_title(task_id)
+            
+            # Decompose and create
+            ai_meta = ai_handler.extract_metadata(title)
+            steps = ai_handler.decompose_task(title)
+            tasks_handler.create_task(title, ai_meta, steps)
+            
+            # Delete from incubator
+            tasks_handler.delete_shiny_object(task_id)
+            
+            await query.edit_message_text(f"🚀 *{title}* is now live!\nDecomposed into {len(steps)} steps and moved to OneShot Tasks.", parse_mode="Markdown")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error starting project: {str(e)}")
+            
+    elif data.startswith("incubatetrash_"):
+        task_id = data.split("_", 1)[1]
+        try:
+            tasks_handler.delete_shiny_object(task_id)
+            await query.edit_message_text("🗑️ Shiny object trashed. Crisis averted!")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error trashing project: {str(e)}")
 
 def main():
     if not TOKEN:
@@ -111,6 +166,10 @@ def main():
         return
         
     application = ApplicationBuilder().token(TOKEN).build()
+    
+    # Schedule incubator check every morning at 09:00
+    if application.job_queue:
+        application.job_queue.run_daily(check_incubator_job, time=datetime.time(hour=9, minute=0, second=0))
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))

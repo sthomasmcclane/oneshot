@@ -61,11 +61,12 @@ def extract_metadata(task_text):
     3. Duration: (e.g., 15m, 1h, 4h).
     4. Energy Required: An integer from 1 to 3 representing the physical/mental toll (1=Low/Easy, 2=Medium, 3=High/Draining).
     5. Schedule: Extract any time-based scheduling information (e.g., "tomorrow 9am", "tonight"). Convert this to an ISO 8601 timestamp string (e.g., "2026-05-11T15:30:00"). Use the current date and time as a reference: {datetime.now().isoformat()}. If the user provides a time without a date, assume today. If the time has already passed today, assume tomorrow. If no schedule is found, return null.
+    6. Is Shiny Object: A boolean (true or false). True if the task is a 'Shiny Object' (e.g., a new project idea, hobby, or non-urgent creative task that the user wants to start but shouldn't immediately). False if it's a standard chore or actionable task.
     
     Task: {task_text}
     
     Return the result ONLY as a JSON object.
-    Example: {{"title": "Order batteries", "context": "home", "duration": "15m", "energy": 1, "scheduled_at": "2026-05-11T15:30:00"}}
+    Example: {{"title": "Order batteries", "context": "home", "duration": "15m", "energy": 1, "scheduled_at": "2026-05-11T15:30:00", "is_shiny_object": false}}
     """
     
     response = client.models.generate_content(
