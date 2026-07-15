@@ -1,40 +1,27 @@
-# 🎯 OneShot Tasks
+# 🎯 OneShot Tasks V2
 
-**The AI-First Task Manager for High-Speed Capture and Intelligent Pulling.**
+**The AI-First Task Manager for High-Speed Capture and Intelligent Surfacing.**
 
-OneShot Tasks is a minimalist, Telegram-based task manager designed for the "Getting Things Done" (GTD) philosophy. It removes the friction of task organization by using AI to decompose broad goals into actionable steps and providing a high-speed, marker-based filtering system.
+OneShot Tasks is a minimalist, Telegram-based task manager designed around a "Zero Syntax" GTD philosophy. It removes the friction of task organization by using AI to decompose broad goals into actionable steps, securely syncing them directly to Google Tasks.
 
 ---
 
 ## ✨ Features
 
-### 1. High-Speed Capture
-Just send a message to the bot. 
-- **AI Decomposition**: Every task is automatically broken down into discrete, sequential steps using Gemini.
-- **Auto-Metadata**: The AI infers context, duration, magnitude, tags, and priority even if you don't explicitly provide them.
-- **Inline Markers**: Use `+context`, `{N}m`, `small|medium|large`, `#tag`, `!u`/`!i`/`!ui` (priority), `[ai]` (AI-offloadable), or `[single]`/`#single` (bypass AI decomposition and save as a single-step task) directly in your capture message to override AI inference.
-- **Intelligent Scheduling**: Add a schedule marker (e.g., `#schedule 15:30`, `tomorrow 9am`, or just `9am`) to have the bot automatically surface the task at that time.
-- **Reply-to-Done / Triage**: Explicitly reply (e.g., swipe to reply or long-press > Reply) to any task-confirmation message with `done` to mark the entire task completed, or `delete` to discard it. Replying with anything else will surface an inline keyboard menu with quick actions.
+### 1. Zero-Syntax High-Speed Capture
+Just send a natural language message to the bot (e.g., "Mow the lawn and trim the hedges"). 
+- **AI Decomposition**: The task is automatically broken down into discrete, sequential steps using Gemini.
+- **Implicit Metadata**: The AI infers Context (home, office, errands), Duration, and the Physical/Mental Energy Required (1-3 scale) entirely from context. No `#hashtags` or `+markers` needed.
+- **Google Tasks Sync**: The parent task and its decomposed steps are instantly saved as native tasks and subtasks in a dedicated "OneShot Tasks" list in your personal Google account. Metadata is neatly stored in the task notes.
 
-### 2. The "Marker Pull" System
-Stop digging through lists. Get the right task for the right moment.
-- Send just the markers (e.g., `+laptop 15m #coding` or `ai` for AI-offloadable items) to instantly retrieve the highest-priority task matching those criteria.
-- **Combined Filters**: Supports intersection filtering across Context, Duration, Magnitude, Hashtags, and AI-offloadability.
+### 2. The "Now" View (Empathy Surfacing)
+Stop digging through lists and experiencing decision fatigue.
+- Send a simple period (`.`) or type `now` to the bot.
+- The bot queries your active Google Tasks and uses an empathy algorithm to surface **exactly one** high-leverage task you can do right now based on time of day and inferred energy.
+- Accept and complete it directly via inline Telegram buttons, or skip it to get a new suggestion.
 
 ### 3. Reality Integration
-- **Morning Nudges**: Every morning at 06:00, the bot synthesizes your weather, calendar, and pending tasks into a conversational nudge.
-- **Context Awareness**: Suggestions are tailored to your actual schedule and environmental conditions (e.g., "It's sunny and your morning is clear, tackle those +yard tasks").
-
-### 4. AI Step Offloading
-- **Step Inference**: Gemini automatically detects which individual steps of a task are offloadable to an AI agent (e.g. brainstorming, writing drafts, writing code, summarizing).
-- **One-Click execution**: AI-offloadable steps are shown with a `🤖 Offload to AI` button. Clicking it commands the bot to execute/draft that step using Gemini on the spot.
-- **Dashboard & Pull Integration**: The dashboard displays the count of pending AI steps with a `🤖 Pull AI Tasks` button to pull them instantly.
-
-### 5. Minimalist Interface
-- `/dash`: A unified dashboard for quick pulls by context, size, tag, or AI-offloadability.
-- `/tags`: Overview of all active project hashtags.
-- `/nudge`: Manually trigger a morning nudge (useful for testing or afternoon planning).
-- `/audit`: Trigger an interactive cleanup of tasks that have been inactive for over 30 days.
+- **Morning Nudges**: Every morning at 06:00, the bot synthesizes your weather, calendar, and pending tasks into a conversational nudge (e.g., "It's sunny and your morning is clear, tackle those yard tasks").
 
 ---
 
@@ -43,15 +30,10 @@ Stop digging through lists. Get the right task for the right moment.
 ### Tech Stack
 - **Language**: Python 3.10+
 - **Bot Framework**: `python-telegram-bot`
-- **Intelligence**: Google Gemini (via `google-generativeai`)
-- **Database**: SQLite3 (Local, volume-mapped)
+- **Intelligence**: Google Gemini (via `google-genai`)
+- **Storage**: Google Tasks API (OAuth 2.0 User Credentials)
 - **Scheduling**: `apscheduler`
 - **Deployment**: Docker Compose
-
-### Data Model
-- **Tasks**: Stores high-level goals and metadata.
-- **Steps**: Stores the AI-generated actionable sequence. A task is only "complete" when all its steps are finished.
-- **Momentum Logic**: Completing a step immediately surfaces the next step in that project to maintain flow.
 
 ---
 
@@ -60,7 +42,10 @@ Stop digging through lists. Get the right task for the right moment.
 ### Prerequisites
 1.  **Telegram Bot Token**: Create one via [@BotFather](https://t.me/botfather).
 2.  **Gemini API Key**: Obtain from [Google AI Studio](https://aistudio.google.com/).
-3.  **Google Calendar API (Optional)**: A `google_credentials.json` file in the `data/` directory for calendar integration.
+3.  **Google OAuth Credentials**: 
+    - Create a Desktop OAuth Client ID in Google Cloud Console.
+    - Save the downloaded JSON as `data/credentials.json`.
+    - Run `python3 oauth_setup.py` locally to authenticate and generate `data/token.json`.
 
 ### Docker Deployment
 1.  Clone the repository.
@@ -75,5 +60,3 @@ Stop digging through lists. Get the right task for the right moment.
     ```bash
     docker compose up -d --build
     ```
-
----
