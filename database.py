@@ -104,6 +104,15 @@ def init_db():
         # Startup: Reset any stuck 'surfaced' steps back to pending
         cursor.execute("UPDATE steps SET is_surfaced = 0 WHERE is_completed = 0")
         
+        # Energy logs table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS energy_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                energy_level TEXT
+            )
+        ''')
+        
         conn.commit()
 
 def add_task(raw_text, title, context, duration, magnitude, steps_list, tags=None, scheduled_at=None, is_urgent=0, is_important=0, force_ai_offloadable=False):
@@ -508,6 +517,20 @@ def get_ai_offloadable_count():
         ''')
         row = cursor.fetchone()
         return row[0] if row else 0
+
+def log_energy(level):
+    """Logs the user's energy level check-in."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO energy_logs (energy_level) VALUES (?)', (level,))
+        conn.commit()
+
+def get_energy_logs(limit=100):
+    """Retrieves recent energy logs."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT timestamp, energy_level FROM energy_logs ORDER BY timestamp DESC LIMIT ?', (limit,))
+        return cursor.fetchall()
 
 if __name__ == "__main__":
     init_db()

@@ -3,6 +3,7 @@ import logging
 import random
 import asyncio
 import datetime
+from zoneinfo import ZoneInfo
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -11,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 import tasks_handler
 import ai_handler
 import reality_handler
+import database
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -125,6 +127,25 @@ async def check_incubator_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error checking incubator: {e}")
 
+async def check_energy_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        keyboard = [
+            [
+                InlineKeyboardButton("🔋 High Energy", callback_data="energy_🔋"),
+                InlineKeyboardButton("🪫 Low Energy", callback_data="energy_🪫")
+            ],
+            [
+                InlineKeyboardButton("🧠 High Focus", callback_data="energy_🧠"),
+                InlineKeyboardButton("🌫️ Brain Fog", callback_data="energy_🌫️")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        msg = "🕰️ Time for an energy check-in! How are you feeling right now?"
+        await context.bot.send_message(chat_id=AUTHORIZED_USER_ID, text=msg, reply_markup=reply_markup)
+    except Exception as e:
+        logging.error(f"Error checking energy: {e}")
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -165,6 +186,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("🗑️ Shiny object trashed. Crisis averted!")
         except Exception as e:
             await query.edit_message_text(f"❌ Error trashing project: {str(e)}")
+            
+    elif data.startswith("energy_"):
+        level = data.split("_", 1)[1]
+        try:
+            database.log_energy(level)
+            await query.edit_message_text(f"Recorded your energy as {level}. Thanks!")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error recording energy: {str(e)}")
 
 def main():
     if not TOKEN:
@@ -173,9 +202,16 @@ def main():
         
     application = ApplicationBuilder().token(TOKEN).build()
     
+    # Ensure times are explicitly in Brisbane time
+    brisbane_tz = ZoneInfo("Australia/Brisbane")
+
     # Schedule incubator check every morning at 09:00
     if application.job_queue:
-        application.job_queue.run_daily(check_incubator_job, time=datetime.time(hour=9, minute=0, second=0))
+        application.job_queue.run_daily(check_incubator_job, time=datetime.time(hour=9, minute=0, second=0, tzinfo=brisbane_tz))
+        
+        # Poll energy during waking hours (9am, 1pm, 5pm, 9pm)
+        for hour in [9, 13, 17, 21]:
+            application.job_queue.run_daily(check_energy_job, time=datetime.time(hour=hour, minute=0, second=0, tzinfo=brisbane_tz))
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
