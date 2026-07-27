@@ -58,11 +58,12 @@ def create_task(title, metadata, steps):
     parent_id = parent_task['id']
     
     # Create subtasks (reversed so they appear in correct chronological order in the UI)
-    for step in reversed(steps):
+    numbered_steps = list(enumerate(steps, 1))
+    for i, step in reversed(numbered_steps):
         step_desc = step.get('description', step) if isinstance(step, dict) else step
         is_ai = step.get('is_ai_offloadable', False) if isinstance(step, dict) else False
         
-        prefix = "🤖 " if is_ai else ""
+        prefix = f"{i:02d} - 🤖 " if is_ai else f"{i:02d} - "
         subtask_body = {
             'title': f"{prefix}{step_desc}"
         }
@@ -108,6 +109,30 @@ def get_active_tasks():
             tasks_with_meta.append(meta)
             
     return tasks_with_meta
+
+def get_next_subtask(parent_id):
+    """Fetches incomplete subtasks for a parent, sorting logically by prefix number or position."""
+    service = get_service()
+    tasklist_id = get_or_create_tasklist(service)
+    
+    results = service.tasks().list(tasklist=tasklist_id, showCompleted=False, showHidden=False).execute()
+    items = results.get('items', [])
+    
+    subtasks = [item for item in items if item.get('parent') == parent_id]
+    if not subtasks:
+        return None
+        
+    import re
+    def sort_key(task):
+        title = task.get('title', '')
+        # Extract number like "01 - " or "1. " or "🤖 01 - "
+        match = re.search(r'(?:🤖\s*)?(\d+)', title)
+        if match:
+            return (0, int(match.group(1)))
+        return (1, task.get('position', ''))
+        
+    subtasks.sort(key=sort_key)
+    return subtasks[0]
 
 def complete_task(task_id):
     """Marks a task as completed in Google Tasks."""
@@ -172,3 +197,79 @@ def get_shiny_object_title(task_id):
     tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
     task = service.tasks().get(tasklist=tasklist_id, task=task_id).execute()
     return task.get('title', 'Unknown Task')
+
+TASK_LIST_SOMEDAY_TITLE = 'Someday'
+
+def archive_stale_tasks(days=14):
+    """
+    Finds tasks in 'OneShot Tasks' that haven't been updated in `days`,
+    moves them to 'Someday', and logs their titles for the monthly review.
+    """
+    service = get_service()
+    tasklist_id = get_or_create_tasklist(service)
+    someday_list_id = get_or_create_list(service, TASK_LIST_SOMEDAY_TITLE)
+    
+    # Get all active tasks
+    results = service.tasks().list(tasklist=tasklist_id, showCompleted=False, showHidden=False).execute()
+    items = results.get('items', [])
+    
+    import datetime
+    cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+    
+    # Group subtasks by parent
+    subtasks_by_parent = {}
+    parents = []
+    
+    for item in items:
+        if 'parent' in item:
+            subtasks_by_parent.setdefault(item['parent'], []).append(item)
+        else:
+            parents.append(item)
+            
+    archived_titles = []
+    
+    for parent in parents:
+        # Determine the latest update time across the parent and all its subtasks
+        latest_update_str = parent.get('updated', '')
+        
+        subs = subtasks_by_parent.get(parent['id'], [])
+        for sub in subs:
+            if sub.get('updated', '') > latest_update_str:
+                latest_update_str = sub.get('updated', '')
+                
+        if not latest_update_str:
+            continue
+            
+        try:
+            # Parse Google's RFC 3339 timestamp (e.g. 2026-07-27T10:00:00.000Z)
+            clean_str = latest_update_str.replace('Z', '+0000')
+            if '.' in clean_str:
+                updated_dt = datetime.datetime.strptime(clean_str, '%Y-%m-%dT%H:%M:%S.%f%z')
+            else:
+                updated_dt = datetime.datetime.strptime(clean_str, '%Y-%m-%dT%H:%M:%S%z')
+        except Exception:
+            continue
+            
+        if updated_dt < cutoff_date:
+            # Archive it!
+            # 1. Re-create parent in Someday list (sub-steps intentionally dropped to save space)
+            new_parent = service.tasks().insert(
+                tasklist=someday_list_id, 
+                body={'title': parent['title'], 'notes': parent.get('notes', '')}
+            ).execute()
+                
+            # 2. Delete the original parent (which cascades and deletes original subtasks)
+            service.tasks().delete(tasklist=tasklist_id, task=parent['id']).execute()
+            
+            archived_titles.append(parent['title'])
+            
+    # Save the archived titles to a log file for the monthly summary job
+    if archived_titles:
+        import os
+        # Ensure data dir exists
+        os.makedirs('data', exist_ok=True)
+        with open('data/archived_tasks.txt', 'a') as f:
+            for title in archived_titles:
+                f.write(title + '\n')
+                
+    return archived_titles
