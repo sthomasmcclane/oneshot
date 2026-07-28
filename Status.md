@@ -4,7 +4,7 @@
 * **Bot Status:** Pivoted to V2 Architecture (Google Tasks Backend + Zero Syntax).
 * **API Key Verification:** Confirmed unlinked API key works successfully on the standard Free Tier.
 * **Storage backend:** Google Tasks API (OAuth 2.0 user credentials). Local SQLite `database.py` deprecated.
-* **Deployment:** Pending deployment of V2 changes to `/opt/docker/`.
+* **Deployment:** V2 changes successfully deployed to `/opt/docker/`.
 
 ---
 
