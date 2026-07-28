@@ -8,6 +8,9 @@
 
 ---
 
+### Recent Changes (2026-07-28) - Shiny Object Triage Update
+* **Shiny Object Triage Update:** Shiny objects are now saved directly to the 'Someday' Google Tasks list instead of a separate 'Incubator' list. The 30-day maturity date and Telegram check-in logic are preserved.
+
 ### Recent Changes (2026-07-21) - Energy Profiler MVP
 * **Energy & Mood Profiler:** Implemented a background-polling mechanism in `bot.py` via `APScheduler` to check in on the user's energy levels (🔋, 🪫, 🧠, 🌫️).
 * **Strict Timezone Handling:** Polling is explicitly tied to Brisbane time (`ZoneInfo("Australia/Brisbane")`) and restricted to waking hours (9:00 AM, 1:00 PM, 5:00 PM, 9:00 PM) to avoid disruptive night-time notifications.

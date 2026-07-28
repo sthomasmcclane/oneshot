@@ -65,7 +65,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tasks_handler.create_shiny_object(task_title)
             confirmation = (
                 f"✨ *Shiny Object Detected: {task_title}*\n"
-                f"I've placed this in the Incubator. I'll check back with you in 30 days before we commit any time to it."
+                f"I've placed this in your 'Someday' list. I'll check back with you in 30 days before we commit any time to it."
             )
             await status_msg.edit_text(confirmation, parse_mode="Markdown")
             return

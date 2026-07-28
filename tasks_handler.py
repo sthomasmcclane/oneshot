@@ -149,7 +149,7 @@ def delete_task(task_id):
     tasklist_id = get_or_create_tasklist(service)
     service.tasks().delete(tasklist=tasklist_id, task=task_id).execute()
 
-TASK_LIST_INCUBATOR_TITLE = 'Incubator'
+TASK_LIST_SOMEDAY_TITLE = 'Someday'
 
 def get_or_create_list(service, title):
     results = service.tasklists().list(maxResults=50).execute()
@@ -162,7 +162,7 @@ def get_or_create_list(service, title):
 
 def create_shiny_object(title):
     service = get_service()
-    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    tasklist_id = get_or_create_list(service, TASK_LIST_SOMEDAY_TITLE)
     import datetime
     maturity_date = (datetime.datetime.now() + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
     notes = f"[Maturity: {maturity_date}]\nIncubating shiny object."
@@ -171,7 +171,7 @@ def create_shiny_object(title):
 
 def get_mature_shiny_objects():
     service = get_service()
-    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    tasklist_id = get_or_create_list(service, TASK_LIST_SOMEDAY_TITLE)
     results = service.tasks().list(tasklist=tasklist_id, showCompleted=False, showHidden=False).execute()
     items = results.get('items', [])
     mature_tasks = []
@@ -189,16 +189,14 @@ def get_mature_shiny_objects():
 
 def delete_shiny_object(task_id):
     service = get_service()
-    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    tasklist_id = get_or_create_list(service, TASK_LIST_SOMEDAY_TITLE)
     service.tasks().delete(tasklist=tasklist_id, task=task_id).execute()
 
 def get_shiny_object_title(task_id):
     service = get_service()
-    tasklist_id = get_or_create_list(service, TASK_LIST_INCUBATOR_TITLE)
+    tasklist_id = get_or_create_list(service, TASK_LIST_SOMEDAY_TITLE)
     task = service.tasks().get(tasklist=tasklist_id, task=task_id).execute()
     return task.get('title', 'Unknown Task')
-
-TASK_LIST_SOMEDAY_TITLE = 'Someday'
 
 def archive_stale_tasks(days=14):
     """
