@@ -16,6 +16,13 @@
 * **Strict Timezone Handling:** Polling is explicitly tied to Brisbane time (`ZoneInfo("Australia/Brisbane")`) and restricted to waking hours (9:00 AM, 1:00 PM, 5:00 PM, 9:00 PM) to avoid disruptive night-time notifications.
 * **Database Tracking:** Re-activated `database.py` functionality exclusively for logging these check-ins to an `energy_logs` table, allowing us to build a baseline profile over time.
 
+### Recent Changes (2026-08-31)
+* **Re-implemented Single-Step & Starred Task Markers**:
+  * Implemented hard-coded markers `#1` to bypass AI decomposition (single step) and `#!` to automatically star a task in Google Tasks.
+  * These markers can be combined as `#!1` or `#1!`.
+  * The script explicitly strips these markers before sending the title to Google Tasks.
+  * Added fallback `⭐` emoji to task titles since Google Tasks API does not support native starring.
+
 ### Recent Changes (2026-07-16) - V2 Overhaul
 * **Shiny Object Incubator**: Added a dedicated flow for capturing non-urgent project ideas. Ideas (auto-detected or manually flagged with `idea:`) bypass decomposition and are sent to a separate "Incubator" Google Tasks list. A 30-day scheduled job automatically pings the user via Telegram to either officially start the project (which then decomposes and promotes it) or trash it.
 * **Google Tasks Pivot**: Removed SQLite (`database.py`) and integrated `tasks_handler.py` to sync all tasks and decomposed steps directly to the user's personal Google Tasks list ("OneShot Tasks").

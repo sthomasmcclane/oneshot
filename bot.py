@@ -51,9 +51,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 2. Task Capture Logic
     status_msg = await update.message.reply_text("🧠 Processing task...")
     try:
+        # Check for #1 and #! markers (including #1! and #!1)
+        is_single = False
+        is_starred = False
+        
+        def process_markers(match):
+            nonlocal is_single, is_starred
+            chars = match.group(1)
+            if '1' in chars:
+                is_single = True
+            if '!' in chars:
+                is_starred = True
+            return ''
+
+        text = re.sub(r'#([1!]+)(?=\s|$)', process_markers, text).strip()
+        # Clean up any multiple spaces left behind
+        text = re.sub(r'\s+', ' ', text)
+        
         # Zero Syntax Inference
         ai_meta = ai_handler.extract_metadata(text)
         task_title = ai_meta.get('title', text[:30])
+        
+        # Apply the star to the title if marked
+        if is_starred:
+            task_title = f"⭐ {task_title}" 
         
         # Explicit override for "idea:" prefix
         if text.lower().startswith('idea:'):
